@@ -16,9 +16,12 @@ RUN dnf copr enable -y bazzite-org/obs-vkcapture && \
     dnf copr enable -y hikariknight/looking-glass-kvmfr && \
     dnf copr enable -y matinlotfali/KDE-Rounded-Corners
 
-# Remove stock kernel & Firefox, then install CachyOS kernel and system packages.
-# KERNEL_INSTALL_DISABLE=1 stops 05-rpmostree.install from firing prematurely mid-transaction!
-RUN KERNEL_INSTALL_DISABLE=1 dnf remove -y \
+# Mask 05-rpmostree.install on disk so RPM scriptlets CANNOT trigger dracut mid-transaction
+RUN mkdir -p /etc/kernel/install.d && \
+    ln -s /dev/null /etc/kernel/install.d/05-rpmostree.install
+
+# Remove stock kernel & Firefox, then install CachyOS kernel and system packages
+RUN dnf remove -y \
         firefox \
         firefox-langpacks \
         kernel \
@@ -26,7 +29,7 @@ RUN KERNEL_INSTALL_DISABLE=1 dnf remove -y \
         kernel-modules \
         kernel-modules-core \
         kernel-modules-extra && \
-    KERNEL_INSTALL_DISABLE=1 dnf install -y \
+    dnf install -y \
         kernel-cachyos \
         kernel-cachyos-devel-matched \
         akmod-nvidia \
@@ -49,8 +52,9 @@ RUN mkdir -p /etc/modprobe.d /etc/dracut.conf.d && \
     echo "options kvmfr static_size_mb=128" > /etc/modprobe.d/kvmfr.conf && \
     echo 'install_items+=" /etc/modprobe.d/kvmfr.conf "' > /etc/dracut.conf.d/kvmfr.conf
 
-# Build drivers, generate depmod, sign kernel/modules for Secure Boot, and build initramfs
-RUN KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
+# Unmask hook, build drivers, run depmod, sign kernel/modules, and trigger initramfs generation
+RUN rm -f /etc/kernel/install.d/05-rpmostree.install && \
+    KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
     # Build out-of-tree Nvidia & KVMFR modules
     akmods --force --kernels "${KVER}" && \
     # Generate module dependency maps
@@ -65,7 +69,7 @@ RUN KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
     find "/usr/lib/modules/${KVER}/extra/" -type f -name "*.ko*" | while read -r mod; do \
         /usr/src/kernels/${KVER}/scripts/sign-file sha256 /tmp/MOK.priv /tmp/MOK.der "$mod"; \
     done && \
-    # PROPER KERNEL INSTALLATION & INITRAMFS GENERATION STEP
+    # Now that depmod, akmods, and signing are ready, generate the bootc initramfs!
     kernel-install add "${KVER}" "/usr/lib/modules/${KVER}/vmlinuz" && \
     # Wipe sensitive signing keys from final image layer
     rm -rf /tmp/MOK.priv /tmp/MOK.der /tmp/MOK.pem && \
