@@ -1,0 +1,54 @@
+name: Build and Push Custom Bootc Image
+
+on:
+  schedule:
+    # Runs automatically every night at 07:00 UTC
+    - cron: '0 7 * * *'
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual triggers from GitHub UI
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/kinoite-nic
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Reconstruct MOK keys from GitHub Secrets
+        run: |
+          echo "${{ secrets.MOK_PRIV_BASE64 }}" | base64 -d > MOK.priv
+          echo "${{ secrets.MOK_DER_BASE64 }}" | base64 -d > MOK.der
+
+      - name: Log in to GitHub Container Registry
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image with Podman
+        run: |
+          podman build \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            .
+
+      - name: Push image to GHCR
+        run: |
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Clean up keys
+        if: always()
+        run: |
+          rm -f MOK.priv MOK.der
