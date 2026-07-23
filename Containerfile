@@ -1,0 +1,75 @@
+ARG FEDORA_VER=44
+FROM quay.io/fedora-ostree-desktops/kinoite:${FEDORA_VER}
+
+# Copy MOK key pair into build environment for Secure Boot kernel & module signing
+COPY MOK.priv MOK.der /tmp/
+
+# Enable RPM Fusion (Free & Non-Free)
+RUN dnf install -y \
+    https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+    https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+
+# Enable COPR Repositories
+RUN dnf copr enable -y bazzite-org/obs-vkcapture && \
+    dnf copr enable -y bieszczaders/kernel-cachyos && \
+    dnf copr enable -y errornointernet/klassy && \
+    dnf copr enable -y hikariknight/looking-glass-kvmfr && \
+    dnf copr enable -y matinlotfali/KDE-Rounded-Corners
+
+# Remove stock kernel & Firefox, then install CachyOS kernel and system packages.
+# KERNEL_INSTALL_DISABLE=1 stops 05-rpmostree.install from firing prematurely mid-transaction!
+RUN KERNEL_INSTALL_DISABLE=1 dnf remove -y \
+        firefox \
+        firefox-langpacks \
+        kernel \
+        kernel-core \
+        kernel-modules \
+        kernel-modules-core \
+        kernel-modules-extra && \
+    KERNEL_INSTALL_DISABLE=1 dnf install -y \
+        kernel-cachyos \
+        kernel-cachyos-devel-matched \
+        akmod-nvidia \
+        xorg-x11-drv-nvidia \
+        xorg-x11-drv-nvidia-cuda \
+        dnscrypt-proxy \
+        klassy \
+        kvmfr-kmod \
+        kwin-effect-roundcorners \
+        libratbag-ratbagd \
+        libvirt \
+        obs-vkcapture \
+        qemu \
+        sbsigntools \
+        steam-devices \
+        waydroid
+
+# Configure kvmfr modprobe & explicitly tell dracut to bundle it in initramfs
+RUN mkdir -p /etc/modprobe.d /etc/dracut.conf.d && \
+    echo "options kvmfr static_size_mb=128" > /etc/modprobe.d/kvmfr.conf && \
+    echo 'install_items+=" /etc/modprobe.d/kvmfr.conf "' > /etc/dracut.conf.d/kvmfr.conf
+
+# Build drivers, generate depmod, sign kernel/modules for Secure Boot, and build initramfs
+RUN KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
+    # Build out-of-tree Nvidia & KVMFR modules
+    akmods --force --kernels "${KVER}" && \
+    # Generate module dependency maps
+    depmod -a "${KVER}" && \
+    # Convert MOK DER to PEM for sbsign
+    openssl x509 -in /tmp/MOK.der -inform DER -out /tmp/MOK.pem && \
+    # Sign the main CachyOS kernel binary (vmlinuz)
+    sbsign --key /tmp/MOK.priv --cert /tmp/MOK.pem \
+           --output "/usr/lib/modules/${KVER}/vmlinuz" \
+           "/usr/lib/modules/${KVER}/vmlinuz" && \
+    # Sign out-of-tree kernel modules
+    find "/usr/lib/modules/${KVER}/extra/" -type f -name "*.ko*" | while read -r mod; do \
+        /usr/src/kernels/${KVER}/scripts/sign-file sha256 /tmp/MOK.priv /tmp/MOK.der "$mod"; \
+    done && \
+    # PROPER KERNEL INSTALLATION & INITRAMFS GENERATION STEP
+    kernel-install add "${KVER}" "/usr/lib/modules/${KVER}/vmlinuz" && \
+    # Wipe sensitive signing keys from final image layer
+    rm -rf /tmp/MOK.priv /tmp/MOK.der /tmp/MOK.pem && \
+    dnf clean all
+
+# Lint the final image for bootc compliance
+RUN bootc container lint
