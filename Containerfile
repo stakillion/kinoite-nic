@@ -16,12 +16,6 @@ RUN dnf copr enable -y bazzite-org/obs-vkcapture && \
     dnf copr enable -y hikariknight/looking-glass-kvmfr && \
     dnf copr enable -y matinlotfali/KDE-Rounded-Corners
 
-# Add Brave's official repository
-RUN curl -fsSLo /etc/yum.repos.d/brave-browser.repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
-
-# Fix the /opt symlink issue so RPM/cpio can install third-party apps normally
-RUN rm -rf /opt && mkdir -p /opt
-
 # Mask 05-rpmostree.install on disk so RPM scriptlets CANNOT trigger dracut mid-transaction
 RUN mkdir -p /etc/kernel/install.d && \
     ln -s /dev/null /etc/kernel/install.d/05-rpmostree.install
@@ -41,21 +35,22 @@ RUN dnf remove -y \
         akmod-nvidia \
         xorg-x11-drv-nvidia \
         xorg-x11-drv-nvidia-cuda \
-        brave-origin \
         dnscrypt-proxy \
-        fastfetch \
-        htop \
         klassy \
         kvmfr-kmod \
         kwin-effect-roundcorners \
         libratbag-ratbagd \
         libvirt \
-        neovim \
         obs-vkcapture \
         qemu \
         sbsigntools \
         steam-devices \
-        waydroid
+        waydroid \
+        nix \
+        nix-daemon
+
+# Enable the nix daemon
+RUN systemctl enable nix-daemon.service
 
 # Configure kvmfr modprobe & explicitly tell dracut to bundle it in initramfs
 RUN mkdir -p /etc/modprobe.d /etc/dracut.conf.d && \
