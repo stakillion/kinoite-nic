@@ -50,8 +50,7 @@ RUN dnf remove -y \
 # Configure kvmfr modprobe & explicitly tell dracut to bundle it in initramfs
 RUN mkdir -p /etc/modprobe.d /etc/dracut.conf.d && \
     echo "options kvmfr static_size_mb=128" > /etc/modprobe.d/kvmfr.conf && \
-    echo 'install_items+=" /etc/modprobe.d/kvmfr.conf "' > /etc/dracut.conf.d/kvmfr.conf && \
-    echo 'add_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "' > /etc/dracut.conf.d/nvidia.conf
+    echo 'install_items+=" /etc/modprobe.d/kvmfr.conf "' > /etc/dracut.conf.d/kvmfr.conf
 
 # Unmask hook, build drivers, run depmod, sign kernel/modules, and trigger initramfs generation
 RUN rm -f /etc/kernel/install.d/05-rpmostree.install && \
@@ -66,9 +65,16 @@ RUN rm -f /etc/kernel/install.d/05-rpmostree.install && \
     sbsign --key /tmp/MOK.priv --cert /tmp/MOK.pem \
            --output "/usr/lib/modules/${KVER}/vmlinuz" \
            "/usr/lib/modules/${KVER}/vmlinuz" && \
-    # Sign out-of-tree kernel modules
-    find "/usr/lib/modules/${KVER}/extra/" -type f -name "*.ko*" | while read -r mod; do \
-        /usr/src/kernels/${KVER}/scripts/sign-file sha256 /tmp/MOK.priv /tmp/MOK.der "$mod"; \
+    # Sign out-of-tree kernel modules safely (handling compressed .ko.xz files)
+    find "/usr/lib/modules/${KVER}/extra/" -type f \( -name "*.ko" -o -name "*.ko.xz" \) | while read -r mod; do \
+        if [[ "$mod" == *.xz ]]; then \
+            unxz "$mod" && \
+            uncompressed="${mod%.xz}" && \
+            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /tmp/MOK.priv /tmp/MOK.der "$uncompressed" && \
+            xz -z "$uncompressed"; \
+        else \
+            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /tmp/MOK.priv /tmp/MOK.der "$mod"; \
+        fi; \
     done && \
     # Generate the bootc initramfs
     kernel-install add "${KVER}" "/usr/lib/modules/${KVER}/vmlinuz" && \
