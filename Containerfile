@@ -69,11 +69,11 @@ RUN rm -f /etc/kernel/install.d/05-rpmostree.install && \
     find "/usr/lib/modules/${KVER}/extra/" -type f -name "*.ko*" | while read -r mod; do \
         /usr/src/kernels/${KVER}/scripts/sign-file sha256 /tmp/MOK.priv /tmp/MOK.der "$mod"; \
     done && \
-    # Now that depmod, akmods, and signing are ready, generate the bootc initramfs!
+    # Generate the bootc initramfs
     kernel-install add "${KVER}" "/usr/lib/modules/${KVER}/vmlinuz" && \
-    # Wipe sensitive signing keys from final image layer
-    rm -rf /tmp/MOK.priv /tmp/MOK.der /tmp/MOK.pem && \
-    dnf clean all
+    # DNF & transient file cleanup (wipes MOK keys in /tmp, build logs, and caches)
+    dnf clean all && \
+    rm -rf /run/* /tmp/* /var/log/* /var/cache/*
 
 # Lint the final image for bootc compliance
 RUN bootc container lint
