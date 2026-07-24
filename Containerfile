@@ -73,7 +73,7 @@ RUN rm -f /etc/kernel/install.d/05-rpmostree.install && \
     kernel-install add "${KVER}" "/usr/lib/modules/${KVER}/vmlinuz" && \
     # DNF & transient file cleanup (wipes MOK keys in /tmp, build logs, and caches)
     dnf clean all && \
-    rm -rf /run/* /tmp/* /var/log/* /var/cache/*
+    rm -rf /run/akmods /run/dnf /tmp/* /var/log/* /var/cache/*
 
 # Lint the final image for bootc compliance
 RUN bootc container lint
