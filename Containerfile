@@ -29,7 +29,7 @@ RUN dnf remove -y \
         kernel-modules \
         kernel-modules-core \
         kernel-modules-extra && \
-    dnf install -y \
+    dnf install -y --setopt=tsflags=noscripts \
         kernel-cachyos \
         kernel-cachyos-devel-matched \
         akmod-nvidia \
