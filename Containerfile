@@ -58,10 +58,6 @@ RUN dnf remove -y \
         steam-devices \
         waydroid
 
-# Point vi and vim to Neovim
-RUN ln -sf /usr/bin/nvim /usr/bin/vi && \
-    ln -sf /usr/bin/nvim /usr/bin/vim
-
 # Configure kvmfr modprobe & explicitly tell dracut to bundle it in initramfs
 RUN mkdir -p /etc/modprobe.d /etc/dracut.conf.d && \
     echo "options kvmfr static_size_mb=128" > /etc/modprobe.d/kvmfr.conf && \
