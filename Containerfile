@@ -55,7 +55,26 @@ RUN dnf remove -y \
         qemu \
         sbsigntools \
         steam-devices \
-        waydroid
+        waydroid \
+        google-noto-sans-fonts \
+        google-noto-sans-cjk-fonts \
+        google-noto-color-emoji-fonts
+
+# Symlink Brave icons
+RUN mkdir -p /usr/share/icons/hicolor/16x16/apps \
+             /usr/share/icons/hicolor/24x24/apps \
+             /usr/share/icons/hicolor/32x32/apps \
+             /usr/share/icons/hicolor/48x48/apps \
+             /usr/share/icons/hicolor/64x64/apps \
+             /usr/share/icons/hicolor/128x128/apps \
+             /usr/share/icons/hicolor/256x256/apps && \
+    ln -sf /opt/brave.com/brave-origin/product_logo_16.png /usr/share/icons/hicolor/16x16/apps/brave-origin.png && \
+    ln -sf /opt/brave.com/brave-origin/product_logo_24.png /usr/share/icons/hicolor/24x24/apps/brave-origin.png && \
+    ln -sf /opt/brave.com/brave-origin/product_logo_32.png /usr/share/icons/hicolor/32x32/apps/brave-origin.png && \
+    ln -sf /opt/brave.com/brave-origin/product_logo_48.png /usr/share/icons/hicolor/48x48/apps/brave-origin.png && \
+    ln -sf /opt/brave.com/brave-origin/product_logo_64.png /usr/share/icons/hicolor/64x64/apps/brave-origin.png && \
+    ln -sf /opt/brave.com/brave-origin/product_logo_128.png /usr/share/icons/hicolor/128x128/apps/brave-origin.png && \
+    ln -sf /opt/brave.com/brave-origin/product_logo_256.png /usr/share/icons/hicolor/256x256/apps/brave-origin.png
 
 # Configure kvmfr modprobe & explicitly tell dracut to bundle it in initramfs
 RUN mkdir -p /etc/modprobe.d /etc/dracut.conf.d && \
