@@ -23,6 +23,9 @@ RUN curl -fsSLo /etc/yum.repos.d/brave-browser.repo https://brave-browser-rpm-re
 RUN mkdir -p /etc/kernel/install.d && \
     ln -s /dev/null /etc/kernel/install.d/05-rpmostree.install
 
+# Fix the /opt symlink issue so RPM/cpio can install third-party apps normally
+RUN rm -rf /opt && mkdir -p /opt
+
 # Remove stock kernel & Firefox, then install CachyOS kernel and system packages
 RUN dnf remove -y \
         firefox \
