@@ -2,7 +2,7 @@ name: Build and Push Custom Bootc Image
 
 on:
   schedule:
-    # Runs automatically every night at 07:00 UTC
+    # Runs automatically every day at 07:00 UTC
     - cron: '0 7 * * *'
   push:
     branches:
@@ -30,7 +30,7 @@ jobs:
           haskell: true
           large-packages: true
           docker-images: true
-          swaps: true
+          swap-storage: true
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -50,6 +50,8 @@ jobs:
       - name: Build image with Podman
         run: |
           podman build \
+            --secret id=mok_priv,src=MOK.priv \
+            --secret id=mok_der,src=MOK.der \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             .

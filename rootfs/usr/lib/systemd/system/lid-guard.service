@@ -1,0 +1,10 @@
+[Unit]
+Description=Lid Guard Resume
+After=suspend.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/lid-sleep-guard.sh post
+
+[Install]
+WantedBy=suspend.target

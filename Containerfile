@@ -1,9 +1,6 @@
 ARG FEDORA_VER=44
 FROM quay.io/fedora-ostree-desktops/kinoite:${FEDORA_VER}
 
-# Copy MOK key pair into build environment for Secure Boot kernel & module signing
-COPY MOK.priv MOK.der /tmp/
-
 # Enable RPM Fusion (Free & Non-Free)
 RUN dnf install -y \
     https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
@@ -73,22 +70,28 @@ RUN mkdir -p /usr/share/icons/hicolor/16x16/apps \
     ln -sf /opt/brave.com/brave-origin/product_logo_128.png /usr/share/icons/hicolor/128x128/apps/brave-origin.png && \
     ln -sf /opt/brave.com/brave-origin/product_logo_256.png /usr/share/icons/hicolor/256x256/apps/brave-origin.png
 
-# Configure kvmfr modprobe & explicitly tell dracut to bundle it in initramfs
-RUN mkdir -p /etc/modprobe.d /etc/dracut.conf.d && \
-    echo "options kvmfr static_size_mb=128" > /etc/modprobe.d/kvmfr.conf && \
-    echo 'install_items+=" /etc/modprobe.d/kvmfr.conf "' > /etc/dracut.conf.d/kvmfr.conf
+# Copy custom system configurations and local binaries into the image
+COPY rootfs/etc/ /etc/
+COPY rootfs/usr/ /usr/
+
+# Enable services
+RUN systemctl enable efibootmgr.service && \
+    systemctl enable lid-guard.service && \
+    systemctl enable lid-guard-pre.service
 
 # Unmask hook, build drivers, run depmod, sign kernel/modules, and trigger initramfs generation
-RUN rm -f /etc/kernel/install.d/05-rpmostree.install && \
+RUN --mount=type=secret,id=mok_priv \
+    --mount=type=secret,id=mok_der \
+    rm -f /etc/kernel/install.d/05-rpmostree.install && \
     KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
     # Build out-of-tree Nvidia & KVMFR modules
     akmods --force --kernels "${KVER}" && \
     # Generate module dependency maps
     depmod -a "${KVER}" && \
     # Convert MOK DER to PEM for sbsign
-    openssl x509 -in /tmp/MOK.der -inform DER -out /tmp/MOK.pem && \
+    openssl x509 -in /run/secrets/mok_der -inform DER -out /tmp/MOK.pem && \
     # Sign the main CachyOS kernel binary (vmlinuz)
-    sbsign --key /tmp/MOK.priv --cert /tmp/MOK.pem \
+    sbsign --key /run/secrets/mok_priv --cert /tmp/MOK.pem \
            --output "/usr/lib/modules/${KVER}/vmlinuz" \
            "/usr/lib/modules/${KVER}/vmlinuz" && \
     # Sign out-of-tree kernel modules safely (handling compressed .ko.xz files)
@@ -96,10 +99,10 @@ RUN rm -f /etc/kernel/install.d/05-rpmostree.install && \
         if [[ "$mod" == *.xz ]]; then \
             unxz "$mod" && \
             uncompressed="${mod%.xz}" && \
-            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /tmp/MOK.priv /tmp/MOK.der "$uncompressed" && \
+            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/mok_priv /run/secrets/mok_der "$uncompressed" && \
             xz -z "$uncompressed"; \
         else \
-            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /tmp/MOK.priv /tmp/MOK.der "$mod"; \
+            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/mok_priv /run/secrets/mok_der "$mod"; \
         fi; \
     done && \
     # Generate the bootc initramfs
