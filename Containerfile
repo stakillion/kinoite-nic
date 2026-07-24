@@ -55,10 +55,7 @@ RUN dnf remove -y \
         qemu \
         sbsigntools \
         steam-devices \
-        waydroid \
-        google-noto-sans-fonts \
-        google-noto-sans-cjk-fonts \
-        google-noto-color-emoji-fonts
+        waydroid
 
 # Symlink Brave icons
 RUN mkdir -p /usr/share/icons/hicolor/16x16/apps \
