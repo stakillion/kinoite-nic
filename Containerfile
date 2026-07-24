@@ -30,7 +30,6 @@ RUN rm -rf /opt && mkdir -p /opt
 RUN dnf remove -y \
         firefox \
         firefox-langpacks \
-        vim-minimal \
         kernel \
         kernel-core \
         kernel-modules \
