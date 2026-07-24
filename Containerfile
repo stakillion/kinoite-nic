@@ -50,7 +50,8 @@ RUN dnf remove -y \
 # Configure kvmfr modprobe & explicitly tell dracut to bundle it in initramfs
 RUN mkdir -p /etc/modprobe.d /etc/dracut.conf.d && \
     echo "options kvmfr static_size_mb=128" > /etc/modprobe.d/kvmfr.conf && \
-    echo 'install_items+=" /etc/modprobe.d/kvmfr.conf "' > /etc/dracut.conf.d/kvmfr.conf
+    echo 'install_items+=" /etc/modprobe.d/kvmfr.conf "' > /etc/dracut.conf.d/kvmfr.conf && \
+    echo 'add_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "' > /etc/dracut.conf.d/nvidia.conf
 
 # Unmask hook, build drivers, run depmod, sign kernel/modules, and trigger initramfs generation
 RUN rm -f /etc/kernel/install.d/05-rpmostree.install && \
