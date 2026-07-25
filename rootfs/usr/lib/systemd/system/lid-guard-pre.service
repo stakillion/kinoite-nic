@@ -5,7 +5,7 @@ Before=sleep.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/lid-sleep-guard.sh pre
+ExecStart=/usr/bin/lid-sleep-guard.sh pre
 
 [Install]
 WantedBy=sleep.target
