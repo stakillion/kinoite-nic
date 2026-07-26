@@ -52,7 +52,8 @@ RUN dnf remove -y \
         qemu \
         sbsigntools \
         steam-devices \
-        waydroid
+        waydroid \
+        fwupd
 
 # Symlink Brave icons
 RUN mkdir -p /usr/share/icons/hicolor/16x16/apps \
@@ -75,7 +76,8 @@ COPY rootfs/etc/ /etc/
 COPY rootfs/usr/ /usr/
 
 # Enable services
-RUN systemctl enable lid-guard.service && \
+RUN systemctl enable libvirtd.service && \
+    systemctl enable lid-guard.service && \
     systemctl enable lid-guard-pre.service
 
 # Unmask hook, build drivers, run depmod, sign kernel/modules, and trigger initramfs generation
