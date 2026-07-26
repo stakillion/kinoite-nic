@@ -75,8 +75,7 @@ COPY rootfs/etc/ /etc/
 COPY rootfs/usr/ /usr/
 
 # Enable services
-RUN systemctl enable efibootmgr.service && \
-    systemctl enable lid-guard.service && \
+RUN systemctl enable lid-guard.service && \
     systemctl enable lid-guard-pre.service
 
 # Unmask hook, build drivers, run depmod, sign kernel/modules, and trigger initramfs generation

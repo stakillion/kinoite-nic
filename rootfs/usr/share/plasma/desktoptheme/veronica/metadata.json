@@ -1,0 +1,19 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "stakillion@gmail.com",
+                "Name": "Nic"
+            }
+        ],
+        "Category": "",
+        "Description": "Custom theme based on Breeze",
+        "EnabledByDefault": true,
+        "Id": "veronica",
+        "License": "LGPL",
+        "Name": "Veronica",
+        "Version": "1.0",
+        "Website": "https://n3.pm/"
+    },
+    "X-Plasma-API": "5.0"
+}
