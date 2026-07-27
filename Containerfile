@@ -52,8 +52,7 @@ RUN dnf remove -y \
         qemu \
         sbsigntools \
         steam-devices \
-        waydroid \
-        fwupd
+        waydroid
 
 # Symlink Brave icons
 RUN mkdir -p /usr/share/icons/hicolor/16x16/apps \
@@ -75,8 +74,13 @@ RUN mkdir -p /usr/share/icons/hicolor/16x16/apps \
 COPY rootfs/etc/ /etc/
 COPY rootfs/usr/ /usr/
 
+# Configure dnscrypt
+RUN sed -i -E "s/^#[[:space:]]*server_names[[:space:]]*=.*/server_names = ['quad9-dnscrypt-ip4-filter-pri']/" /etc/dnscrypt-proxy/dnscrypt-proxy.toml && \
+    sed -i -E "s/^[[:space:]]*require_nofilter[[:space:]]*=.*/require_nofilter = false/" /etc/dnscrypt-proxy/dnscrypt-proxy.toml
+
 # Enable services
 RUN systemctl enable libvirtd.service && \
+    systemctl enable dnscrypt-proxy.service && \
     systemctl enable lid-guard.service && \
     systemctl enable lid-guard-pre.service
 
