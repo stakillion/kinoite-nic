@@ -10,7 +10,8 @@ RUN dnf install -y \
 RUN dnf copr enable -y bazzite-org/obs-vkcapture && \
     dnf copr enable -y bieszczaders/kernel-cachyos && \
     dnf copr enable -y errornointernet/klassy && \
-    dnf copr enable -y hikariknight/looking-glass-kvmfr
+    dnf copr enable -y hikariknight/looking-glass-kvmfr && \
+    dnf copr enable -y chenxiaolong/sbctl
 
 # Add Brave's official repository
 RUN curl -fsSLo /etc/yum.repos.d/brave-browser.repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
@@ -51,6 +52,7 @@ RUN dnf remove -y \
         sbsigntools \
         steam-devices \
         systemd-boot-unsigned \
+        sbctl \
         waydroid
 
 # Symlink Brave icons
