@@ -87,22 +87,21 @@ RUN systemctl enable libvirtd.service && \
     systemctl enable systemd-boot-update.service
 
 # Unmask hook, build drivers, run depmod, sign kernel/modules, and trigger initramfs generation
-RUN --mount=type=secret,id=mok_priv \
-    --mount=type=secret,id=mok_der \
+RUN --mount=type=secret,id=sbctl_db_key \
+    --mount=type=secret,id=sbctl_db_cert \
+    --mount=type=secret,id=sbctl_db_der \
     rm -f /etc/kernel/install.d/05-rpmostree.install && \
     KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
     # Build out-of-tree Nvidia & KVMFR modules
     akmods --force --kernels "${KVER}" && \
     # Generate module dependency maps
     depmod -a "${KVER}" && \
-    # Convert MOK DER to PEM for sbsign
-    openssl x509 -in /run/secrets/mok_der -inform DER -out /tmp/MOK.pem && \
     # Sign the main CachyOS kernel binary (vmlinuz)
-    sbsign --key /run/secrets/mok_priv --cert /tmp/MOK.pem \
+    sbsign --key /run/secrets/sbctl_db_key --cert /run/secrets/sbctl_db_cert \
            --output "/usr/lib/modules/${KVER}/vmlinuz" \
            "/usr/lib/modules/${KVER}/vmlinuz" && \
     # Sign systemd-boot
-    sbsign --key /run/secrets/mok_priv --cert /tmp/MOK.pem \
+    sbsign --key /run/secrets/sbctl_db_key --cert /run/secrets/sbctl_db_cert \
            --output /usr/lib/systemd/boot/efi/systemd-bootx64.efi \
            /usr/lib/systemd/boot/efi/systemd-bootx64.efi && \
     # Sign out-of-tree kernel modules safely (handling compressed .ko.xz files)
@@ -110,15 +109,15 @@ RUN --mount=type=secret,id=mok_priv \
         if [[ "$mod" == *.xz ]]; then \
             unxz "$mod" && \
             uncompressed="${mod%.xz}" && \
-            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/mok_priv /run/secrets/mok_der "$uncompressed" && \
+            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/sbctl_db_key /run/secrets/sbctl_db_der "$uncompressed" && \
             xz -z "$uncompressed"; \
         else \
-            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/mok_priv /run/secrets/mok_der "$mod"; \
+            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/sbctl_db_key /run/secrets/sbctl_db_der "$mod"; \
         fi; \
     done && \
     # Generate the bootc initramfs
     kernel-install add "${KVER}" "/usr/lib/modules/${KVER}/vmlinuz" && \
-    # DNF & transient file cleanup (wipes MOK keys in /tmp, build logs, and caches)
+    # DNF & transient file cleanup
     dnf clean all && \
     rm -rf /run/akmods /run/dnf /tmp/* /var/log/* /var/cache/*
 

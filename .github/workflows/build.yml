@@ -35,10 +35,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Reconstruct MOK keys from GitHub Secrets
+      - name: Reconstruct sbctl keys from GitHub Secrets
         run: |
-          echo "${{ secrets.MOK_PRIV_BASE64 }}" | base64 -d > MOK.priv
-          echo "${{ secrets.MOK_DER_BASE64 }}" | base64 -d > MOK.der
+          echo "${{ secrets.SBCTL_DB_KEY }}" | base64 -d > sbctl_db.key
+          echo "${{ secrets.SBCTL_DB_CERT }}" | base64 -d > sbctl_db.pem
+          echo "${{ secrets.SBCTL_DB_DER }}" | base64 -d > sbctl_db.der
 
       - name: Log in to GitHub Container Registry
         uses: redhat-actions/podman-login@v1
@@ -50,8 +51,9 @@ jobs:
       - name: Build image with Podman
         run: |
           podman build \
-            --secret id=mok_priv,src=MOK.priv \
-            --secret id=mok_der,src=MOK.der \
+            --secret id=sbctl_db_key,src=sbctl_db.key \
+            --secret id=sbctl_db_cert,src=sbctl_db.pem \
+            --secret id=sbctl_db_der,src=sbctl_db.der \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             .
@@ -64,4 +66,4 @@ jobs:
       - name: Clean up keys
         if: always()
         run: |
-          rm -f MOK.priv MOK.der
+          rm -f sbctl_db.key sbctl_db.pem sbctl_db.der
