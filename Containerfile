@@ -10,8 +10,7 @@ RUN dnf install -y \
 RUN dnf copr enable -y bazzite-org/obs-vkcapture && \
     dnf copr enable -y bieszczaders/kernel-cachyos && \
     dnf copr enable -y errornointernet/klassy && \
-    dnf copr enable -y hikariknight/looking-glass-kvmfr && \
-    dnf copr enable -y matinlotfali/KDE-Rounded-Corners
+    dnf copr enable -y hikariknight/looking-glass-kvmfr
 
 # Add Brave's official repository
 RUN curl -fsSLo /etc/yum.repos.d/brave-browser.repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
@@ -44,7 +43,6 @@ RUN dnf remove -y \
         htop \
         klassy \
         kvmfr-kmod \
-        kwin-effect-roundcorners \
         libratbag-ratbagd \
         libvirt \
         neovim \
@@ -52,6 +50,7 @@ RUN dnf remove -y \
         qemu \
         sbsigntools \
         steam-devices \
+        systemd-boot-unsigned \
         waydroid
 
 # Symlink Brave icons
@@ -82,7 +81,8 @@ RUN sed -i -E "s/^#[[:space:]]*server_names[[:space:]]*=.*/server_names = ['quad
 RUN systemctl enable libvirtd.service && \
     systemctl enable dnscrypt-proxy.service && \
     systemctl enable lid-guard.service && \
-    systemctl enable lid-guard-pre.service
+    systemctl enable lid-guard-pre.service && \
+    systemctl enable systemd-boot-update.service
 
 # Unmask hook, build drivers, run depmod, sign kernel/modules, and trigger initramfs generation
 RUN --mount=type=secret,id=mok_priv \
@@ -99,6 +99,10 @@ RUN --mount=type=secret,id=mok_priv \
     sbsign --key /run/secrets/mok_priv --cert /tmp/MOK.pem \
            --output "/usr/lib/modules/${KVER}/vmlinuz" \
            "/usr/lib/modules/${KVER}/vmlinuz" && \
+    # Sign systemd-boot
+    sbsign --key /run/secrets/mok_priv --cert /tmp/MOK.pem \
+           --output /usr/lib/systemd/boot/efi/systemd-bootx64.efi \
+           /usr/lib/systemd/boot/efi/systemd-bootx64.efi && \
     # Sign out-of-tree kernel modules safely (handling compressed .ko.xz files)
     find "/usr/lib/modules/${KVER}/extra/" -type f \( -name "*.ko" -o -name "*.ko.xz" \) | while read -r mod; do \
         if [[ "$mod" == *.xz ]]; then \
