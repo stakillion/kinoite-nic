@@ -31,7 +31,8 @@ RUN dnf remove -y \
         kernel-core \
         kernel-modules \
         kernel-modules-core \
-        kernel-modules-extra && \
+        kernel-modules-extra \
+        bootupd && \
     dnf install -y --setopt=tsflags=noscripts \
         kernel-cachyos \
         kernel-cachyos-devel-matched \
