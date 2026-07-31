@@ -21,20 +21,22 @@ jobs:
       packages: write
 
     steps:
-      - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
+      # 1. Fast 2-second inline disk wipe (replaces 3-minute jlumbroso action)
+      - name: Free Disk Space (Fast Wipe)
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache \
+            /usr/local/share/powershell \
+            /usr/local/share/chromium \
+            /var/lib/docker
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2. Reconstruct your sbctl keys from secrets
       - name: Reconstruct sbctl keys from GitHub Secrets
         run: |
           echo "${{ secrets.SBCTL_DB_KEY }}" | base64 -d > sbctl_db.key
@@ -48,21 +50,52 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build image with Podman
+      # 3. Build raw image with secret mounts attached and tag as :raw
+      - name: Build Raw Image with Podman
         run: |
           podman build \
+            --format=oci \
             --secret id=sbctl_db_key,src=sbctl_db.key \
             --secret id=sbctl_db_cert,src=sbctl_db.pem \
             --secret id=sbctl_db_der,src=sbctl_db.der \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:raw \
             .
 
-      - name: Push image to GHCR
+      # 4. Re-chunk the signed raw image with Chunkah
+      - name: Optimize Layers with Chunkah
+        run: |
+          RAW_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:raw"
+          TARGET_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+
+          export CHUNKAH_CONFIG_STR="$(podman inspect ${RAW_IMAGE})"
+          mkdir -p /tmp/chunkah-out
+
+          # Run Chunkah with bootc label stripping & hardlink preservation
+          podman run --rm \
+            --mount=type=image,src=${RAW_IMAGE},target=/chunkah \
+            -v /tmp/chunkah-out:/out:Z \
+            -e CHUNKAH_CONFIG_STR \
+            quay.io/coreos/chunkah:latest build \
+            --prune /sysroot/ \
+            --label ostree.final-diffid- \
+            --max-layers 128 \
+            -t ${TARGET_IMAGE} \
+            -o /out/chunked.tar
+
+          # Load optimized image into Podman storage
+          podman load -i /tmp/chunkah-out/chunked.tar
+          rm -rf /tmp/chunkah-out
+
+          # Tag with the commit SHA
+          podman tag ${TARGET_IMAGE} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # 5. Push final chunked images to GHCR
+      - name: Push Chunked Image to GHCR
         run: |
           podman push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           podman push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
+      # 6. Always clean up sensitive key files from runner workspace
       - name: Clean up keys
         if: always()
         run: |

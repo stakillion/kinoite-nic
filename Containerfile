@@ -97,8 +97,6 @@ RUN --mount=type=secret,id=sbctl_db_key \
     KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
     # Build out-of-tree Nvidia & KVMFR modules
     akmods --force --kernels "${KVER}" && \
-    # Generate module dependency maps
-    depmod -a "${KVER}" && \
     # Sign the main CachyOS kernel binary (vmlinuz)
     sbsign --key /run/secrets/sbctl_db_key --cert /run/secrets/sbctl_db_cert \
            --output "/usr/lib/modules/${KVER}/vmlinuz" \
@@ -118,11 +116,13 @@ RUN --mount=type=secret,id=sbctl_db_key \
             /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/sbctl_db_key /run/secrets/sbctl_db_der "$mod"; \
         fi; \
     done && \
+    # Generate module dependency maps
+    depmod -a "${KVER}" && \
     # Generate the bootc initramfs
     kernel-install add "${KVER}" "/usr/lib/modules/${KVER}/vmlinuz" && \
     # DNF & transient file cleanup
     dnf clean all && \
-    rm -rf /run/akmods /run/dnf /tmp/* /var/log/* /var/cache/*
+    rm -rf /run/akmods /run/dnf /tmp/* /var/*
 
 # Lint the final image for bootc compliance
 RUN bootc container lint
