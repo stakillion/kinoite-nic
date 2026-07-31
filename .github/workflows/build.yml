@@ -21,7 +21,6 @@ jobs:
       packages: write
 
     steps:
-      # 1. Fast 2-second inline disk wipe
       - name: Free Disk Space (Fast Wipe)
         run: |
           sudo rm -rf \
@@ -36,7 +35,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Reconstruct your MOK keys from GitHub Secrets
       - name: Reconstruct MOK keys from GitHub Secrets
         run: |
           echo "${{ secrets.MOK_KEY }}" | base64 -d > mok.key
@@ -50,7 +48,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. Build raw image with MOK secret mounts attached
       - name: Build Raw Image with Podman
         run: |
           podman build \
@@ -58,44 +55,14 @@ jobs:
             --secret id=mok_key,src=mok.key \
             --secret id=mok_crt,src=mok.crt \
             --secret id=mok_der,src=mok.der \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:raw \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
             .
 
-      # 4. Re-chunk the signed raw image with Chunkah
-      - name: Optimize Layers with Chunkah
-        run: |
-          RAW_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:raw"
-          TARGET_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-
-          export CHUNKAH_CONFIG_STR="$(podman inspect ${RAW_IMAGE})"
-          mkdir -p /tmp/chunkah-out
-
-          # Run Chunkah with bootc label stripping & hardlink preservation
-          podman run --rm \
-            --mount=type=image,src=${RAW_IMAGE},target=/chunkah \
-            -v /tmp/chunkah-out:/out:Z \
-            -e CHUNKAH_CONFIG_STR \
-            quay.io/coreos/chunkah:latest build \
-            --prune /sysroot/ \
-            --label ostree.final-diffid- \
-            --max-layers 128 \
-            -t ${TARGET_IMAGE} \
-            -o /out/chunked.tar
-
-          # Load optimized image into Podman storage
-          podman load -i /tmp/chunkah-out/chunked.tar
-          rm -rf /tmp/chunkah-out
-
-          # Tag with the commit SHA
-          podman tag ${TARGET_IMAGE} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-      # 5. Push final chunked images to GHCR
       - name: Push Chunked Image to GHCR
         run: |
-          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      # 6. Always clean up sensitive key files from runner workspace
       - name: Clean up keys
         if: always()
         run: |
