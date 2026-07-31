@@ -21,7 +21,7 @@ jobs:
       packages: write
 
     steps:
-      # 1. Fast 2-second inline disk wipe (replaces 3-minute jlumbroso action)
+      # 1. Fast 2-second inline disk wipe
       - name: Free Disk Space (Fast Wipe)
         run: |
           sudo rm -rf \
@@ -36,12 +36,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Reconstruct your sbctl keys from secrets
-      - name: Reconstruct sbctl keys from GitHub Secrets
+      # 2. Reconstruct your MOK keys from GitHub Secrets
+      - name: Reconstruct MOK keys from GitHub Secrets
         run: |
-          echo "${{ secrets.SBCTL_DB_KEY }}" | base64 -d > sbctl_db.key
-          echo "${{ secrets.SBCTL_DB_CERT }}" | base64 -d > sbctl_db.pem
-          echo "${{ secrets.SBCTL_DB_DER }}" | base64 -d > sbctl_db.der
+          echo "${{ secrets.MOK_KEY }}" | base64 -d > mok.key
+          echo "${{ secrets.MOK_CRT }}" | base64 -d > mok.crt
+          echo "${{ secrets.MOK_DER }}" | base64 -d > mok.der
 
       - name: Log in to GitHub Container Registry
         uses: redhat-actions/podman-login@v1
@@ -50,14 +50,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. Build raw image with secret mounts attached and tag as :raw
+      # 3. Build raw image with MOK secret mounts attached
       - name: Build Raw Image with Podman
         run: |
           podman build \
             --format=oci \
-            --secret id=sbctl_db_key,src=sbctl_db.key \
-            --secret id=sbctl_db_cert,src=sbctl_db.pem \
-            --secret id=sbctl_db_der,src=sbctl_db.der \
+            --secret id=mok_key,src=mok.key \
+            --secret id=mok_crt,src=mok.crt \
+            --secret id=mok_der,src=mok.der \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:raw \
             .
 
@@ -99,4 +99,4 @@ jobs:
       - name: Clean up keys
         if: always()
         run: |
-          rm -f sbctl_db.key sbctl_db.pem sbctl_db.der
+          rm -f mok.key mok.crt mok.der

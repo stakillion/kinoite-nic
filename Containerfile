@@ -55,7 +55,6 @@ RUN dnf remove -y \
         sbsigntools \
         steam-devices \
         systemd-boot-unsigned \
-        sbctl \
         waydroid
 
 # Symlink Brave icons
@@ -90,30 +89,30 @@ RUN systemctl enable libvirtd.service && \
     systemctl enable systemd-boot-update.service
 
 # Unmask hook, build drivers, run depmod, sign kernel/modules, and trigger initramfs generation
-RUN --mount=type=secret,id=sbctl_db_key \
-    --mount=type=secret,id=sbctl_db_cert \
-    --mount=type=secret,id=sbctl_db_der \
+RUN --mount=type=secret,id=mok_key \
+    --mount=type=secret,id=mok_crt \
+    --mount=type=secret,id=mok_der \
     rm -f /etc/kernel/install.d/05-rpmostree.install && \
     KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
     # Build out-of-tree Nvidia & KVMFR modules
     akmods --force --kernels "${KVER}" && \
-    # Sign the main CachyOS kernel binary (vmlinuz)
-    sbsign --key /run/secrets/sbctl_db_key --cert /run/secrets/sbctl_db_cert \
+    # Sign the CachyOS kernel binary with MOK
+    sbsign --key /run/secrets/mok_key --cert /run/secrets/mok_crt \
            --output "/usr/lib/modules/${KVER}/vmlinuz" \
            "/usr/lib/modules/${KVER}/vmlinuz" && \
-    # Sign systemd-boot
-    sbsign --key /run/secrets/sbctl_db_key --cert /run/secrets/sbctl_db_cert \
+    # Sign systemd-boot with MOK
+    sbsign --key /run/secrets/mok_key --cert /run/secrets/mok_crt \
            --output /usr/lib/systemd/boot/efi/systemd-bootx64.efi \
            /usr/lib/systemd/boot/efi/systemd-bootx64.efi && \
-    # Sign out-of-tree kernel modules safely (handling compressed .ko.xz files)
+    # Sign out-of-tree kernel modules with MOK
     find "/usr/lib/modules/${KVER}/extra/" -type f \( -name "*.ko" -o -name "*.ko.xz" \) | while read -r mod; do \
         if [[ "$mod" == *.xz ]]; then \
             unxz "$mod" && \
             uncompressed="${mod%.xz}" && \
-            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/sbctl_db_key /run/secrets/sbctl_db_der "$uncompressed" && \
+            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/mok_key /run/secrets/mok_der "$uncompressed" && \
             xz -z "$uncompressed"; \
         else \
-            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/sbctl_db_key /run/secrets/sbctl_db_der "$mod"; \
+            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/mok_key /run/secrets/mok_der "$mod"; \
         fi; \
     done && \
     # Generate module dependency maps
