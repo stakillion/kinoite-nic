@@ -10,6 +10,7 @@ RUN dnf install -y \
 RUN dnf copr enable -y bazzite-org/obs-vkcapture && \
     dnf copr enable -y bieszczaders/kernel-cachyos && \
     dnf copr enable -y errornointernet/klassy && \
+    dnf copr enable -y deltacopy/darkly && \
     dnf copr enable -y hikariknight/looking-glass-kvmfr && \
     dnf copr enable -y chenxiaolong/sbctl
 
@@ -44,6 +45,7 @@ RUN dnf remove -y \
         fastfetch \
         htop \
         klassy \
+        darkly \
         kvmfr-kmod \
         libratbag-ratbagd \
         libvirt \
