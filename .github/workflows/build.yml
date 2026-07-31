@@ -48,7 +48,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Raw Image with Podman
+      - name: Build Image with Podman
         run: |
           podman build \
             --format=oci \
@@ -56,9 +56,10 @@ jobs:
             --secret id=mok_crt,src=mok.crt \
             --secret id=mok_der,src=mok.der \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             .
 
-      - name: Push Chunked Image to GHCR
+      - name: Push Image to GHCR
         run: |
           podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
