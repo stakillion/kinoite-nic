@@ -1,5 +1,8 @@
 ARG FEDORA_VER=44
-FROM quay.io/fedora-ostree-desktops/kinoite:${FEDORA_VER}
+# ==============================================================================
+# Stage 1: Build rootfs with all packages, kernel modules, and configuration
+# ==============================================================================
+FROM quay.io/fedora-ostree-desktops/kinoite:${FEDORA_VER} AS rootfs
 
 # Enable RPM Fusion (Free & Non-Free)
 RUN dnf install -y \
@@ -96,11 +99,7 @@ RUN --mount=type=secret,id=mok_key \
     KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
     # Build out-of-tree Nvidia & KVMFR modules
     akmods --force --kernels "${KVER}" && \
-    # Sign the CachyOS kernel binary with MOK
-    sbsign --key /run/secrets/mok_key --cert /run/secrets/mok_crt \
-           --output "/usr/lib/modules/${KVER}/vmlinuz" \
-           "/usr/lib/modules/${KVER}/vmlinuz" && \
-    # Sign systemd-boot with MOK
+    # Sign systemd-boot bootloader payload
     sbsign --key /run/secrets/mok_key --cert /run/secrets/mok_crt \
            --output /usr/lib/systemd/boot/efi/systemd-bootx64.efi \
            /usr/lib/systemd/boot/efi/systemd-bootx64.efi && \
@@ -115,13 +114,57 @@ RUN --mount=type=secret,id=mok_key \
             /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/mok_key /run/secrets/mok_der "$mod"; \
         fi; \
     done && \
-    # Generate module dependency maps
     depmod -a "${KVER}" && \
-    # Generate the bootc initramfs
-    kernel-install add "${KVER}" "/usr/lib/modules/${KVER}/vmlinuz" && \
-    # DNF & transient file cleanup
+    # Generate initramfs inside /usr/lib/modules/${KVER}/ so split-kernel-and-rootfs can locate it
+    mkdir -p /var/roothome && \
+    dracut --force --kver "${KVER}" "/usr/lib/modules/${KVER}/initramfs.img" && \
     dnf clean all && \
-    rm -rf /run/akmods /run/dnf /tmp/* /var/*
+    rm -rf /run/gluster /run/akmods /run/dnf /tmp/* /var/tmp/* /var/cache/* /var/log/*
 
 # Lint the final image for bootc compliance
 RUN bootc container lint
+
+# ==============================================================================
+# Stage 2: Extract Kernel & Clean Rootfs
+# ==============================================================================
+FROM rootfs AS kernel-extract
+RUN KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
+    mkdir -p /kernel/${KVER} && \
+    cp "/usr/lib/modules/${KVER}/vmlinuz" "/kernel/${KVER}/vmlinuz" && \
+    cp "/usr/lib/modules/${KVER}/initramfs.img" "/kernel/${KVER}/initramfs.img"
+
+FROM rootfs AS rootfs-clean
+# Remove standalone vmlinuz/initramfs AND prune legacy ostree folders
+RUN KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
+    rm -f "/usr/lib/modules/${KVER}/vmlinuz" "/usr/lib/modules/${KVER}/initramfs.img" && \
+    rm -rf /ostree /sysroot/ostree /sysroot/*
+
+# ==============================================================================
+# Stage 3: Build and Sign UKI against clean rootfs
+# ==============================================================================
+FROM quay.io/fedora/fedora-bootc:latest AS sealed-uki
+RUN dnf install -y systemd-ukify sbsigntools && dnf clean all
+
+RUN --mount=type=bind,from=rootfs-clean,target=/target,ro \
+    --mount=type=bind,from=kernel-extract,source=/kernel,target=/kernel \
+    --mount=type=secret,id=mok_key \
+    --mount=type=secret,id=mok_crt \
+    set -euo pipefail && \
+    mkdir -p /var/tmp /out && \
+    kver=$(ls /kernel) && \
+    bootc container ukify \
+      --rootfs /target \
+      --kernel-dir "/kernel/${kver}" \
+      -- \
+      --output "/out/${kver}.efi" \
+      --signtool sbsign \
+      --secureboot-private-key /run/secrets/mok_key \
+      --secureboot-certificate /run/secrets/mok_crt
+
+# ==============================================================================
+# Stage 4: Final sealed image with split rootfs and signed UKI
+# ==============================================================================
+FROM rootfs-clean AS final
+
+# Copy the signed UKI to /boot/EFI/Linux/<kver>.efi
+COPY --from=sealed-uki /out/*.efi /boot/EFI/Linux/
