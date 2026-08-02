@@ -48,9 +48,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Image with Podman
+      - name: Step 1 - Build Rootfs and Generate Chunked OCI
         run: |
           podman build \
+            -f Containerfile.rootfs \
+            --secret id=mok_key,src=mok.key \
+            --secret id=mok_crt,src=mok.crt \
+            --secret id=mok_der,src=mok.der \
+            .
+
+      - name: Step 2 - Build Final Image from Chunked OCI
+        run: |
+          podman build \
+            -f Containerfile \
             --format=oci \
             --secret id=mok_key,src=mok.key \
             --secret id=mok_crt,src=mok.crt \
@@ -61,8 +71,9 @@ jobs:
 
       - name: Push Image to GHCR
         run: |
-          podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          podman push --compression-format zstd:chunked ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          podman push --compression-format zstd:chunked ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
 
       - name: Clean up keys
         if: always()
