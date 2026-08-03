@@ -1,0 +1,5 @@
+kargs = [
+    "nvidia-drm.modeset=1",
+    "rd.driver.blacklist=nouveau",
+    "modprobe.blacklist=nouveau"
+]
