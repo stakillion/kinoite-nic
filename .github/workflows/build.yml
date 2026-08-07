@@ -2,12 +2,11 @@ name: Build and Push Custom Bootc Image
 
 on:
   schedule:
-    # Runs automatically every day at 07:00 UTC
-    - cron: '0 7 * * *'
+    - cron: '0 6 * * *'
   push:
     branches:
       - main
-  workflow_dispatch: # Allows manual triggers from GitHub UI
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -21,7 +20,7 @@ jobs:
       packages: write
 
     steps:
-      - name: Free Disk Space (Fast Wipe)
+      - name: Free Disk Space
         run: |
           sudo rm -rf \
             /usr/share/dotnet \
@@ -48,19 +47,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Step 1 - Build Rootfs and Generate Chunked OCI
+      - name: Build Image with Podman
         run: |
           podman build \
-            -f Containerfile \
+            --target chunkah \
             --secret id=mok_key,src=mok.key \
             --secret id=mok_crt,src=mok.crt \
             --secret id=mok_der,src=mok.der \
-            .
-
-      - name: Step 2 - Build Final Image from Chunked OCI
-        run: |
+            . && \
           podman build \
-            -f Containerfile.uki \
+            --target final \
             --format=oci \
             --secret id=mok_key,src=mok.key \
             --secret id=mok_crt,src=mok.crt \
@@ -73,7 +69,6 @@ jobs:
         run: |
           podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-
 
       - name: Clean up keys
         if: always()

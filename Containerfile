@@ -1,4 +1,5 @@
 ARG FEDORA_VER=44
+
 # ==============================================================================
 # Stage 1: Build rootfs with all packages, kernel modules, and configuration
 # ==============================================================================
@@ -40,20 +41,10 @@ RUN rm -f /etc/dnf/protected.d/grub* /etc/dnf/protected.d/shim* && \
 
 
 # Symlink Brave icons
-RUN mkdir -p /usr/share/icons/hicolor/16x16/apps \
-             /usr/share/icons/hicolor/24x24/apps \
-             /usr/share/icons/hicolor/32x32/apps \
-             /usr/share/icons/hicolor/48x48/apps \
-             /usr/share/icons/hicolor/64x64/apps \
-             /usr/share/icons/hicolor/128x128/apps \
-             /usr/share/icons/hicolor/256x256/apps && \
-    ln -sf /opt/brave.com/brave-origin/product_logo_16.png /usr/share/icons/hicolor/16x16/apps/brave-origin.png && \
-    ln -sf /opt/brave.com/brave-origin/product_logo_24.png /usr/share/icons/hicolor/24x24/apps/brave-origin.png && \
-    ln -sf /opt/brave.com/brave-origin/product_logo_32.png /usr/share/icons/hicolor/32x32/apps/brave-origin.png && \
-    ln -sf /opt/brave.com/brave-origin/product_logo_48.png /usr/share/icons/hicolor/48x48/apps/brave-origin.png && \
-    ln -sf /opt/brave.com/brave-origin/product_logo_64.png /usr/share/icons/hicolor/64x64/apps/brave-origin.png && \
-    ln -sf /opt/brave.com/brave-origin/product_logo_128.png /usr/share/icons/hicolor/128x128/apps/brave-origin.png && \
-    ln -sf /opt/brave.com/brave-origin/product_logo_256.png /usr/share/icons/hicolor/256x256/apps/brave-origin.png
+RUN for res in 16 24 32 48 64 128 256; do \
+        mkdir -p /usr/share/icons/hicolor/${res}x${res}/apps && \
+        ln -sf /opt/brave.com/brave-origin/product_logo_${res}.png /usr/share/icons/hicolor/${res}x${res}/apps/brave-origin.png; \
+    done
 
 # Copy custom system configurations and local binaries into the image
 COPY rootfs/usr/ /usr/
@@ -67,14 +58,10 @@ RUN sed -i 's/^passwd:.*/passwd:     files altfiles/' /etc/nsswitch.conf && \
     sed -i 's/^group:.*/group:      files altfiles/' /etc/nsswitch.conf
 
 # Enable services
-RUN systemctl enable libvirtd.service && \
-    systemctl enable dnscrypt-proxy.service && \
-    systemctl enable lid-guard.service && \
-    systemctl enable lid-guard-pre.service
+RUN systemctl enable libvirtd.service dnscrypt-proxy.service lid-guard.service lid-guard-pre.service
 
 # Build and sign kernel modules and trigger initramfs generation
 RUN --mount=type=secret,id=mok_key \
-    --mount=type=secret,id=mok_crt \
     --mount=type=secret,id=mok_der \
     KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
     akmods --force --kernels "${KVER}" && \
@@ -100,30 +87,61 @@ RUN dnf clean all && \
 RUN bootc container lint
 
 # ==============================================================================
-# Stage 2: Extract Kernel and Initramfs
+# Stage 2: Split raw kernel/initramfs out of rootfs using bootc
 # ==============================================================================
-FROM rootfs AS kernel-extractor
-RUN KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
-    mkdir -p /out && \
-    cp /usr/lib/modules/${KVER}/vmlinuz /out/vmlinuz && \
-    cp /usr/lib/modules/${KVER}/initramfs.img /out/initramfs.img && \
-    echo "${KVER}" > /out/kver.txt
+FROM rootfs AS split
+RUN mkdir -p /kernel && \
+    bootc container split-kernel-and-rootfs \
+      --rootfs / \
+      --output /kernel
 
 # ==============================================================================
-# Stage 3: Clean kernel/initramfs out of rootfs and Rechunk via chunkah
+# Stage 3: Rechunk stripped base OS via chunkah
 # ==============================================================================
-FROM rootfs AS rootfs-clean
-RUN KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
-    rm -f /usr/lib/modules/${KVER}/initramfs.img /usr/lib/modules/${KVER}/vmlinuz
-
 FROM quay.io/coreos/chunkah AS chunkah
-RUN --mount=from=rootfs-clean,src=/,target=/chunkah,ro \
-    --mount=from=kernel-extractor,src=/out,target=/kernel-in,ro \
+RUN --mount=from=split,src=/,target=/chunkah,ro \
     --mount=type=bind,src=.,target=/run/src,rw \
-        mkdir -p /run/src/kernel-out && \
-        cp /kernel-in/* /run/src/kernel-out/ && \
-        chunkah build \
-            --max-layers 256 \
-            --prune /ostree \
-            --prune /sysroot/ostree \
-            --output oci:/run/src/out
+    chunkah build \
+        --max-layers 256 \
+        --prune /ostree \
+        --prune /sysroot/ostree \
+        --output oci:/run/src/out
+
+# ==============================================================================
+# Stage 4: Load chunked base image
+# ==============================================================================
+FROM oci:out AS rootfs-chunked
+LABEL containers.bootc=1
+ENV container=oci
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]
+
+# ==============================================================================
+# Stage 5: Build UKI using extracted kernel directory from Stage 2
+# ==============================================================================
+FROM quay.io/fedora/fedora-bootc:latest AS sealed-uki
+RUN dnf install -y systemd-ukify sbsigntools && dnf clean all
+
+RUN --mount=type=tmpfs,target=/run \
+    --mount=type=tmpfs,target=/tmp \
+    --mount=type=secret,id=mok_key \
+    --mount=type=secret,id=mok_crt \
+    --mount=type=bind,from=rootfs-chunked,target=/run/target,ro \
+    --mount=type=bind,from=split,src=/kernel,target=/kernel,ro \
+    set -euo pipefail && \
+    KVER=$(ls /kernel) && \
+    mkdir -p /out && \
+    bootc container ukify \
+      --rootfs /run/target \
+      --kernel-dir "/kernel/${KVER}" \
+      -- \
+      --output "/out/${KVER}.efi" \
+      --signtool sbsign \
+      --secureboot-private-key /run/secrets/mok_key \
+      --secureboot-certificate /run/secrets/mok_crt
+
+# ==============================================================================
+# Stage 6: Final Image (Chunked Base + UKI top layer)
+# ==============================================================================
+FROM rootfs-chunked AS final
+COPY --from=sealed-uki /out/*.efi /boot/EFI/Linux/
