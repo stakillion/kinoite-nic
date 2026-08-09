@@ -3,8 +3,8 @@ ARG FEDORA_VER=44
 # ==============================================================================
 # Stage 1: Build rootfs with all packages, kernel modules, and configuration
 # ==============================================================================
-FROM scratch as scripts
-COPY scripts /
+#FROM scratch as scripts
+#COPY scripts /
 
 FROM quay.io/fedora-ostree-desktops/kinoite:${FEDORA_VER} AS rootfs
 
@@ -43,8 +43,8 @@ RUN rm -f /etc/dnf/protected.d/grub* /etc/dnf/protected.d/shim* && \
         klassy darkly
 
 # Install AeroThemePlasma
-RUN --mount=type=bind,from=scripts,src=/,target=/run/scripts \
-    /run/scripts/aerothemeplasma.sh
+#RUN --mount=type=bind,from=scripts,src=/,target=/run/scripts \
+#    /run/scripts/aerothemeplasma.sh
 
 # Symlink Brave icons
 RUN for res in 16 24 32 48 64 128 256; do \
