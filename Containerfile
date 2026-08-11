@@ -32,14 +32,15 @@ RUN rm -f /etc/dnf/protected.d/grub* /etc/dnf/protected.d/shim* && \
         kernel kernel-core kernel-modules kernel-modules-core kernel-modules-extra \
         rpm-ostree rpm-ostree-libs plasma-discover-rpm-ostree \
         shim-* grub2-* bootupd \
-        firefox firefox-langpacks && \
+        firefox firefox-langpacks \
+        toolbox && \
     dnf install -y --setopt=tsflags=noscripts \
         kernel-cachyos kernel-cachyos-devel-matched systemd-boot-unsigned \
         akmod-nvidia xorg-x11-drv-nvidia xorg-x11-drv-nvidia-cuda \
         libratbag-ratbagd steam-devices obs-vkcapture \
         libvirt qemu kvmfr-kmod dnscrypt-proxy \
-        brave-origin waydroid \
-        neovim htop fastfetch \
+        brave-origin waydroid distrobox \
+        neovim htop fastfetch yt-dlp \
         klassy darkly
 
 # Install AeroThemePlasma
