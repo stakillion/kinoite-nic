@@ -41,7 +41,9 @@ RUN rm -f /etc/dnf/protected.d/grub* /etc/dnf/protected.d/shim* && \
         libvirt qemu kvmfr-kmod dnscrypt-proxy \
         brave-origin waydroid distrobox \
         neovim htop fastfetch yt-dlp \
-        klassy darkly
+        klassy darkly \
+        webkit2gtk4.1 && \
+    dnf swap -y ffmpeg-free ffmpeg --allowerasing
 
 # Install AeroThemePlasma
 #RUN --mount=type=bind,from=scripts,src=/,target=/run/scripts \
@@ -90,6 +92,9 @@ RUN --mount=type=secret,id=mok_key \
 RUN dnf clean all && \
     rm -rf /var/lib/libvirt/* /var/lib/dnf/* /var/lib/iscsi /run/akmods /run/dnf /tmp/* /var/tmp/* /var/cache/* /var/log/*
 
+# Freeze timestamps across /usr, /etc, and /var/opt for chunkah
+RUN find /usr /etc /var/opt -exec touch -h -d "2026-01-01T00:00:00Z" {} +
+
 # Lint complete rootfs before splitting kernel or chunking
 RUN bootc container lint
 
@@ -107,7 +112,7 @@ RUN mkdir -p /kernel && \
 # ==============================================================================
 FROM quay.io/coreos/chunkah AS chunkah
 RUN --mount=from=split,src=/,target=/chunkah,ro \
-    --mount=type=bind,src=.,target=/run/src,rw \
+    --mount=type=bind,target=/run/src,rw \
     chunkah build \
         --max-layers 256 \
         --prune /ostree \
