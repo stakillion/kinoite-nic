@@ -51,6 +51,7 @@ jobs:
         run: |
           podman build \
             --target chunkah \
+            -v $(pwd):/run/src:rw,z \
             --secret id=mok_key,src=mok.key \
             --secret id=mok_crt,src=mok.crt \
             --secret id=mok_der,src=mok.der \

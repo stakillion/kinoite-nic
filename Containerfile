@@ -105,7 +105,6 @@ RUN mkdir -p /kernel && \
 # ==============================================================================
 FROM quay.io/coreos/chunkah AS chunkah
 RUN --mount=from=split,src=/,target=/chunkah,ro \
-    --mount=type=bind,target=/run/src,rw \
     chunkah build \
         --max-layers 256 \
         --prune /ostree \
