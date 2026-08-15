@@ -109,6 +109,7 @@ RUN --mount=from=split,src=/,target=/chunkah,ro \
         --max-layers 256 \
         --prune /ostree \
         --prune /sysroot/ostree \
+        --prune /kernel \
         --output oci:/run/src/out
 
 # ==============================================================================
