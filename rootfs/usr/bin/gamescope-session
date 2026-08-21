@@ -1,0 +1,2 @@
+#!/bin/sh
+exec gamescope --hdr-enabled --hdr-sdr-content-nits 1015 --hdr-itm-sdr-nits 1015 -e -f -- steam -steamos -gamepadui "$@"

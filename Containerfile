@@ -3,7 +3,7 @@ ARG FEDORA_VER=44
 # ==============================================================================
 # Stage 1: Build rootfs with all packages, kernel modules, and configuration
 # ==============================================================================
-FROM quay.io/fedora-ostree-desktops/kinoite:${FEDORA_VER} AS rootfs
+FROM quay.io/fedora/fedora-kinoite:${FEDORA_VER} AS rootfs
 
 # Enable RPM Fusion (Free & Non-Free)
 RUN dnf install -y \
@@ -38,8 +38,8 @@ RUN rm -f /etc/dnf/protected.d/grub* /etc/dnf/protected.d/shim* && \
         libvirt qemu kvmfr-kmod dnscrypt-proxy \
         brave-origin waydroid distrobox \
         neovim htop hyfetch yt-dlp \
-        klassy darkly \
-        webkit2gtk4.1 && \
+        steam gamescope mangohud \
+        klassy darkly && \
     dnf swap -y ffmpeg-free ffmpeg --allowerasing
 
 # Symlink Brave icons
