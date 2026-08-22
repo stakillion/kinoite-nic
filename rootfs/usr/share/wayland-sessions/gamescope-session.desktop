@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=Gamescope
-Comment=Steam Game Mode Session
+Name=Steam Gaming Mode
+Comment=Steam Gaming Mode Session
 Exec=/usr/bin/gamescope-session
 Type=Application
 DesktopNames=gamescope

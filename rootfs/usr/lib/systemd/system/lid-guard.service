@@ -4,7 +4,7 @@ After=suspend.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/lid-sleep-guard.sh post
+ExecStart=/usr/bin/lid-sleep-guard post
 
 [Install]
 WantedBy=suspend.target
