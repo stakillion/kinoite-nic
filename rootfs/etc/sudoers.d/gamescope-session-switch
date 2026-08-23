@@ -1,0 +1,1 @@
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/fgconsole, /usr/bin/chvt, /usr/bin/gamescope-session-vt

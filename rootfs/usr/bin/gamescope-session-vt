@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+TARGET_USER="$1"
+TARGET_TTY="$2"
+
+if [ -z "$TARGET_USER" ] || [ -z "$TARGET_TTY" ]; then
+    echo "Usage: $0 <user> <tty_number>"
+    exit 1
+fi
+
+exec systemd-run \
+  --unit="gamescope-tty$TARGET_TTY" \
+  --property=PAMName=login \
+  --property=TTYPath="/dev/tty$TARGET_TTY" \
+  --property=StandardInput=tty \
+  --property=StandardOutput=tty \
+  --property=StandardError=tty \
+  --property="UnsetEnvironment=DISPLAY WAYLAND_DISPLAY XDG_SESSION_TYPE" \
+  --uid="$TARGET_USER" \
+  --collect \
+  --wait \
+  /usr/bin/gamescope-session

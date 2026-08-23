@@ -50,6 +50,7 @@ RUN for res in 16 24 32 48 64 128 256; do \
 
 # Copy custom system configurations and local binaries into the image
 COPY rootfs/usr/ /usr/
+COPY rootfs/etc/ /etc/
 
 # Configure dnscrypt
 RUN sed -i -E "s/^#[[:space:]]*server_names[[:space:]]*=.*/server_names = ['quad9-dnscrypt-ip4-filter-pri']/" /etc/dnscrypt-proxy/dnscrypt-proxy.toml && \
@@ -81,12 +82,9 @@ RUN --mount=type=secret,id=mok_key \
     mkdir -p /var/roothome && \
     env DRACUT_NO_XATTR=1 dracut --force --kver "${KVER}" "/usr/lib/modules/${KVER}/initramfs.img"
 
-# clean up
+# Clean up
 RUN dnf clean all && \
     rm -rf /var/lib/libvirt/* /var/lib/dnf/* /var/lib/iscsi /run/akmods /run/dnf /tmp/* /var/tmp/* /var/cache/* /var/log/*
-
-# Freeze timestamps across /usr, /etc, and /var/opt for chunkah
-RUN find /usr /etc /var/opt -exec touch -h -d "2026-01-01T00:00:00Z" {} +
 
 # Lint complete rootfs before splitting kernel or chunking
 RUN bootc container lint

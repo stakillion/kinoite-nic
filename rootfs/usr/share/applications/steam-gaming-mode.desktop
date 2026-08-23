@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Steam Gaming Mode
+Comment=Launch Gamescope Steam Session on a Free TTY
+Exec=/usr/bin/gamescope-session-switch
+Icon=steam
+Terminal=false
+Type=Application
+Categories=Game;

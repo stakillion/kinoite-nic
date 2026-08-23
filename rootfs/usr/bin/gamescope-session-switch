@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+if pgrep -x "steam" > /dev/null; then
+  if command -v kdialog >/dev/null 2>&1; then
+    kdialog --title "Gaming Mode Error" --error "Steam is currently running on your desktop session.\nPlease exit Steam completely before switching to Gaming Mode."
+  elif command -v zenity >/dev/null 2>&1; then
+    zenity --error --title="Gaming Mode Error" --text="Steam is currently running on your desktop session.\nPlease exit Steam completely before switching to Gaming Mode."
+  else
+    notify-send "Gaming Mode Error" "Steam is currently running! Exit Steam before launching Gaming Mode."
+  fi
+  exit 1
+fi
+
+loginctl lock-session
+
+ORIG_VT=$(sudo /usr/bin/fgconsole 2>/dev/null || echo 2)
+FREE_VT=$(sudo /usr/bin/fgconsole --next-available)
+
+sudo /usr/bin/chvt "$FREE_VT"
+sudo /usr/bin/gamescope-session-vt "$USER" "$FREE_VT"
+sudo /usr/bin/chvt "$ORIG_VT"
