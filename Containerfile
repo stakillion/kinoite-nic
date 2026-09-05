@@ -57,7 +57,8 @@ COPY rootfs/etc/ /etc/
 
 # Configure dnscrypt
 RUN sed -i -E "s/^#[[:space:]]*server_names[[:space:]]*=.*/server_names = ['quad9-dnscrypt-ip4-filter-pri']/" /etc/dnscrypt-proxy/dnscrypt-proxy.toml && \
-    sed -i -E "s/^[[:space:]]*require_nofilter[[:space:]]*=.*/require_nofilter = false/" /etc/dnscrypt-proxy/dnscrypt-proxy.toml
+    sed -i -E "s/^[[:space:]]*require_nofilter[[:space:]]*=.*/require_nofilter = false/" /etc/dnscrypt-proxy/dnscrypt-proxy.toml && \
+    sed -i -E "s/^#[[:space:]]*forwarding_rules[[:space:]]*=.*/forwarding_rules = '\/etc\/dnscrypt-proxy\/forwarding-rules.txt'/" /etc/dnscrypt-proxy/dnscrypt-proxy.toml
 
 # Configure altfiles in nsswitch.conf
 RUN sed -i 's/^passwd:.*/passwd:     files altfiles/' /etc/nsswitch.conf && \
