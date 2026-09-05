@@ -20,6 +20,9 @@ RUN dnf copr enable -y bazzite-org/obs-vkcapture && \
 # Add Brave's official repository
 RUN curl -fsSLo /etc/yum.repos.d/brave-browser.repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
 
+# Add Tailscale's official repository
+RUN curl -fsSLo /etc/yum.repos.d/tailscale.repo https://pkgs.tailscale.com/stable/fedora/tailscale.repo
+
 # Ensure /var/opt exists
 RUN mkdir -p /var/opt
 
@@ -35,7 +38,7 @@ RUN rm -f /etc/dnf/protected.d/grub* /etc/dnf/protected.d/shim* && \
         kernel-cachyos kernel-cachyos-devel-matched systemd-boot-unsigned \
         akmod-nvidia xorg-x11-drv-nvidia xorg-x11-drv-nvidia-cuda \
         libratbag-ratbagd steam-devices obs-vkcapture \
-        libvirt qemu kvmfr-kmod dnscrypt-proxy \
+        libvirt qemu kvmfr-kmod dnscrypt-proxy tailscale \
         brave-origin waydroid distrobox \
         neovim htop hyfetch yt-dlp \
         steam gamescope mangohud \
@@ -61,7 +64,7 @@ RUN sed -i 's/^passwd:.*/passwd:     files altfiles/' /etc/nsswitch.conf && \
     sed -i 's/^group:.*/group:      files altfiles/' /etc/nsswitch.conf
 
 # Enable services
-RUN systemctl enable libvirtd.service dnscrypt-proxy.service lid-guard.service lid-guard-pre.service
+RUN systemctl enable libvirtd.service dnscrypt-proxy.service lid-guard.service lid-guard-pre.service tailscaled.service
 
 # Build and sign kernel modules and trigger initramfs generation
 RUN --mount=type=secret,id=mok_key \
