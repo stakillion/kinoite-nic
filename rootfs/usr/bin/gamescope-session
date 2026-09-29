@@ -1,2 +1,41 @@
 #!/bin/sh
-exec gamescope --hdr-enabled --mangoapp -e -f -- steam -steamos3 "$@"
+
+EXTERNAL_DISPLAYS=""
+PREFER_VK=""
+
+for status in /sys/class/drm/*/status; do
+  [ -f "$status" ] || continue
+  if [ "$(cat "$status" 2>/dev/null)" = "connected" ]; then
+    conn=$(basename "$(dirname "$status")")
+    card="${conn%%-*}"
+    conn_name="${conn#card*-}"
+    case "$conn_name" in
+      eDP*|LVDS*|DSI*|Writeback*|Virtual*)
+        ;;
+      *)
+        if [ -z "$EXTERNAL_DISPLAYS" ]; then
+          EXTERNAL_DISPLAYS="$conn_name"
+        else
+          EXTERNAL_DISPLAYS="$EXTERNAL_DISPLAYS,$conn_name"
+        fi
+        if [ -z "$PREFER_VK" ] && [ -d "/sys/class/drm/$card/device" ]; then
+          v=$(cat "/sys/class/drm/$card/device/vendor" 2>/dev/null)
+          d=$(cat "/sys/class/drm/$card/device/device" 2>/dev/null)
+          if [ -n "$v" ] && [ -n "$d" ]; then
+            PREFER_VK="${v#0x}:${d#0x}"
+          fi
+        fi
+        ;;
+    esac
+  fi
+done
+
+GAMESCOPE_ARGS=""
+if [ -n "$PREFER_VK" ]; then
+  GAMESCOPE_ARGS="--prefer-vk-device $PREFER_VK"
+fi
+if [ -n "$EXTERNAL_DISPLAYS" ]; then
+  GAMESCOPE_ARGS="$GAMESCOPE_ARGS -O $EXTERNAL_DISPLAYS"
+fi
+
+exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- steam -steamos3 "$@"
