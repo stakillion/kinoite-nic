@@ -1,7 +1,11 @@
 #!/bin/sh
 
+export GAMESCOPE_WSI_HIDE_PRESENT_WAIT_EXT=1
+export VKD3D_DISABLE_EXTENSIONS="VK_KHR_present_wait"
+
 EXTERNAL_DISPLAYS=""
 PREFER_VK=""
+WATCH_FILES=""
 
 for status in /sys/class/drm/*/status; do
   [ -f "$status" ] || continue
@@ -25,6 +29,7 @@ for status in /sys/class/drm/*/status; do
             PREFER_VK="${v#0x}:${d#0x}"
           fi
         fi
+        WATCH_FILES="$WATCH_FILES $status"
         ;;
     esac
   fi
@@ -35,7 +40,34 @@ if [ -n "$PREFER_VK" ]; then
   GAMESCOPE_ARGS="--prefer-vk-device $PREFER_VK"
 fi
 if [ -n "$EXTERNAL_DISPLAYS" ]; then
-  GAMESCOPE_ARGS="$GAMESCOPE_ARGS -O $EXTERNAL_DISPLAYS"
+  GAMESCOPE_ARGS="$GAMESCOPE_ARGS -O $EXTERNAL_DISPLAYS --force-composition"
 fi
 
-exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- steam -steamos3 "$@"
+if [ -n "$WATCH_FILES" ]; then
+  gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- steam -steamos3 "$@" &
+  GAMESCOPE_PID=$!
+
+  # Watch for external display disconnect and request clean Steam shutdown
+  (
+    while kill -0 "$GAMESCOPE_PID" 2>/dev/null; do
+      sleep 0.3
+      for f in $WATCH_FILES; do
+        if [ ! -f "$f" ] || [ "$(cat "$f" 2>/dev/null)" != "connected" ]; then
+          steam -shutdown 2>/dev/null
+          exit 0
+        fi
+      done
+    done
+  ) &
+  WATCHER_PID=$!
+
+  trap 'steam -shutdown 2>/dev/null; kill "$WATCHER_PID" 2>/dev/null' TERM INT HUP
+
+  wait "$GAMESCOPE_PID" 2>/dev/null
+  EXIT_CODE=$?
+  kill "$WATCHER_PID" 2>/dev/null
+  wait "$WATCHER_PID" 2>/dev/null
+  exit $EXIT_CODE
+else
+  exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- steam -steamos3 "$@"
+fi

@@ -23,8 +23,9 @@ RUN curl -fsSLo /etc/yum.repos.d/brave-browser.repo https://brave-browser-rpm-re
 # Add Tailscale's official repository
 RUN curl -fsSLo /etc/yum.repos.d/tailscale.repo https://pkgs.tailscale.com/stable/fedora/tailscale.repo
 
-# Ensure /var/opt exists
-RUN mkdir -p /var/opt
+# Ensure /opt exists w/o symlink
+RUN rm -rf /opt && \
+    mkdir /opt
 
 # Remove stock kernel & Firefox, then install CachyOS kernel and system packages
 RUN rm -f /etc/dnf/protected.d/grub* /etc/dnf/protected.d/shim* && \
