@@ -42,7 +42,7 @@ RUN rm -f /etc/dnf/protected.d/grub* /etc/dnf/protected.d/shim* && \
         libvirt qemu kvmfr-kmod dnscrypt-proxy tailscale \
         brave-origin waydroid distrobox \
         neovim htop hyfetch yt-dlp \
-        steam gamescope mangohud \
+        steam gamescope mangohud zenity \
         klassy darkly && \
     dnf swap -y ffmpeg-free ffmpeg --allowerasing
 
