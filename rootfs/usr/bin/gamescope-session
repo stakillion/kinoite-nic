@@ -38,4 +38,4 @@ if [ -n "$EXTERNAL_DISPLAYS" ]; then
   GAMESCOPE_ARGS="$GAMESCOPE_ARGS -O $EXTERNAL_DISPLAYS"
 fi
 
-exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- steam -steamos3 "$@"
+exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- flatpak run com.valvesoftware.Steam -steamos3 "$@"
