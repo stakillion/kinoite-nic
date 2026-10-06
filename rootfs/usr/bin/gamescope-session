@@ -38,4 +38,17 @@ if [ -n "$EXTERNAL_DISPLAYS" ]; then
   GAMESCOPE_ARGS="$GAMESCOPE_ARGS -O $EXTERNAL_DISPLAYS"
 fi
 
-exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- flatpak run com.valvesoftware.Steam -steamos3 "$@"
+exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- sh -c '
+  if [ -n "$MANGOHUD_CONFIGFILE" ]; then
+    SANDBOX_XDG="$XDG_RUNTIME_DIR/.flatpak/com.valvesoftware.Steam/xdg-run"
+    mkdir -p "$SANDBOX_XDG"
+    CONFIG_NAME="$(basename "$MANGOHUD_CONFIGFILE")"
+    SANDBOX_CONFIG="$SANDBOX_XDG/$CONFIG_NAME"
+    cp -f "$MANGOHUD_CONFIGFILE" "$SANDBOX_CONFIG" 2>/dev/null || touch "$SANDBOX_CONFIG"
+    ln -sf "$SANDBOX_CONFIG" "$MANGOHUD_CONFIGFILE"
+  fi
+
+  exec flatpak run \
+    --env=MANGOHUD_CONFIGFILE="$MANGOHUD_CONFIGFILE" \
+    com.valvesoftware.Steam -steamos3 "$@"
+' _ "$@"
