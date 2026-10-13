@@ -11,11 +11,15 @@ if pgrep -x "steam" > /dev/null; then
   exit 1
 fi
 
-loginctl lock-session
+# Capture the desktop session ID before switching
+DESKTOP_SESSION_ID="${XDG_SESSION_ID:-$(loginctl session-status 2>/dev/null | head -n1 | awk '{print $1}')}"
 
 ORIG_VT=$(sudo /usr/bin/fgconsole 2>/dev/null || echo 2)
 FREE_VT=$(sudo /usr/bin/fgconsole --next-available)
 
+# Blank the target VT and suppress cursor
+sudo /usr/bin/sh -c "printf '\033c\033[?25l' > '/dev/tty$FREE_VT'"
+
 sudo /usr/bin/chvt "$FREE_VT"
-sudo /usr/bin/gamescope-session-vt "$USER" "$FREE_VT"
+sudo /usr/bin/gamescope-session-vt "$USER" "$FREE_VT" "$ORIG_VT" "$DESKTOP_SESSION_ID"
 sudo /usr/bin/chvt "$ORIG_VT"

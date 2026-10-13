@@ -1,0 +1,176 @@
+#!/bin/bash
+
+# 0. Fast-path: bypass GUI updater if Steam is already running or control flags are passed
+for arg in "$@"; do
+  case "$arg" in
+    -shutdown|-exit|-checkforupdates)
+      exec flatpak run com.valvesoftware.Steam "$@"
+      ;;
+  esac
+done
+
+if pgrep -f "steamwebhelper" >/dev/null 2>&1; then
+  exec flatpak run com.valvesoftware.Steam "$@"
+fi
+
+# 1. Dynamic Gamescope environment detection
+IS_GAMESCOPE=0
+ZENITY_FLAGS=()
+TARGET_DISPLAY="${DISPLAY:-:0}"
+
+if pgrep -x gamescope >/dev/null 2>&1 || [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ] || [ "$WAYLAND_DISPLAY" = "gamescope-0" ]; then
+  IS_GAMESCOPE=1
+  # Use the active display provided by Gamescope's Xwayland (whether :0 or :1)
+  TARGET_DISPLAY="${DISPLAY:-:0}"
+  export DISPLAY="$TARGET_DISPLAY"
+
+  ZENITY_FLAGS=(
+    "--nosocket=wayland"
+    "--socket=x11"
+    "--env=GDK_BACKEND=x11"
+    "--env=DISPLAY=$TARGET_DISPLAY"
+    "--env=GDK_SCALE=4"
+  )
+fi
+
+BOOT_LOG="$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/logs/bootstrap_log.txt"
+mkdir -p "$(dirname "$BOOT_LOG")"
+> "$BOOT_LOG"
+
+# 2. In-memory pipe directly into Zenity
+FEED="/tmp/zenity_feed_$$"
+rm -f "$FEED"
+mkfifo "$FEED"
+exec 4<> "$FEED"
+
+dismiss_zenity() {
+  STEAM_READY=1
+  exec 4>&- 2>/dev/null
+  kill -TERM "$ZENITY_PID" 2>/dev/null
+  pkill -f "zenity" 2>/dev/null
+  (
+    sleep 0.3
+    kill -9 "$ZENITY_PID" 2>/dev/null
+    pkill -9 -f "zenity" 2>/dev/null
+  ) &
+}
+
+cleanup() {
+  dismiss_zenity
+  rm -f "$FEED"
+  kill "$PARSER_PID" 2>/dev/null
+  pkill -P $$ 2>/dev/null
+}
+trap cleanup EXIT INT TERM
+
+# 3. Stream bootstrap log stages directly to Zenity
+(
+  re_dl='Downloading update \(([0-9,]+) of ([0-9,]+) KB\)'
+
+  tail -n 0 -F "$BOOT_LOG" 2>/dev/null | while IFS= read -r line; do
+    if [[ "$line" =~ Checking[[:space:]]for[[:space:]]available[[:space:]]updates ]]; then
+      echo "0" >&4
+      echo "# Checking for available updates..." >&4
+    elif [[ "$line" =~ $re_dl ]]; then
+      cur="${BASH_REMATCH[1]//,/}"
+      tot="${BASH_REMATCH[2]//,/}"
+      if [ "$tot" -gt 0 ] 2>/dev/null; then
+        pct=$(( cur * 90 / tot ))
+        [ "$pct" -gt 90 ] && pct=90
+        echo "$pct" >&4
+        echo "# Downloading update: ${pct}% (${BASH_REMATCH[1]} / ${BASH_REMATCH[2]} KB)..." >&4
+      fi
+    elif [[ "$line" =~ Set[[:space:]]status[[:space:]]message:[[:space:]]*(.*) ]]; then
+      msg="${BASH_REMATCH[1]}"
+      echo "# $msg" >&4
+    elif [[ "$line" =~ (Extracting package|Installing update|Verifying installation|Cleaning up) ]]; then
+      echo "95" >&4
+      echo "# ${BASH_REMATCH[1]}..." >&4
+    elif [[ "$line" =~ (Verification[[:space:]]complete|Update[[:space:]]complete|Shutdown[[:space:]]-[[:space:]]update[[:space:]]complete) ]]; then
+      echo "100" >&4
+      echo "# Starting Steam..." >&4
+      sleep 0.2
+      dismiss_zenity
+      break
+    fi
+  done
+) &
+PARSER_PID=$!
+
+# 4. Launch Steam Flatpak in background
+flatpak run com.valvesoftware.Steam "$@" &
+STEAM_PID=$!
+
+# 5. Launch Zenity progress bar
+flatpak run \
+  "${ZENITY_FLAGS[@]}" \
+  --command=zenity com.valvesoftware.Steam \
+  --progress \
+  --title="Steam" \
+  --window-icon="com.valvesoftware.Steam" \
+  --text="Checking for updates..." \
+  --percentage=0 \
+  --width=500 \
+  --auto-close \
+  --cancel-label="Cancel" < "$FEED" > /tmp/zenity.log 2>&1 &
+ZENITY_PID=$!
+
+# 6. Gamescope Basemap Handshake (Dynamically targeting $TARGET_DISPLAY)
+if [ "$IS_GAMESCOPE" -eq 1 ]; then
+  (
+    echo "Initializing Gamescope root layer on display $TARGET_DISPLAY..." > /tmp/xprop_tag.log
+
+    xprop -display "$TARGET_DISPLAY" -root -f GAMESCOPECTRL_BASELAYER_APPID 32c -set GAMESCOPECTRL_BASELAYER_APPID 769 >> /tmp/xprop_tag.log 2>&1
+
+    for i in $(seq 1 80); do
+      CLASS=$(xprop -display "$TARGET_DISPLAY" -name "Steam" WM_CLASS 2>/dev/null)
+      if echo "$CLASS" | grep -qi "zenity"; then
+        xprop -display "$TARGET_DISPLAY" -name "Steam" -f STEAM_GAME 32c -set STEAM_GAME 769 >> /tmp/xprop_tag.log 2>&1
+        echo "Successfully tagged Zenity 'Steam' window on attempt $i (display $TARGET_DISPLAY)" >> /tmp/xprop_tag.log
+        break
+      fi
+      sleep 0.1
+    done
+  ) &
+fi
+
+sleep 0.5
+STEAM_READY=0
+
+# 7. Monitoring loop
+while kill -0 "$STEAM_PID" 2>/dev/null; do
+  if ! pgrep -f -- "-child-update-ui" >/dev/null 2>&1 && [ -f "$BOOT_LOG" ]; then
+    if grep -q -E "(Verification complete|Update complete|Shutdown - update complete)" "$BOOT_LOG" 2>/dev/null; then
+      dismiss_zenity
+      break
+    fi
+  fi
+
+  if pgrep -f "steamwebhelper.*--type=renderer" >/dev/null 2>&1; then
+    dismiss_zenity
+    break
+  fi
+
+  if ! kill -0 "$ZENITY_PID" 2>/dev/null; then
+    wait "$ZENITY_PID" 2>/dev/null
+    STATUS=$?
+
+    if [ "$STATUS" -eq 0 ]; then
+      STEAM_READY=1
+      break
+    fi
+
+    if [ "$STEAM_READY" -eq 0 ]; then
+      echo "Steam startup cancelled by user."
+      flatpak kill com.valvesoftware.Steam 2>/dev/null
+      pkill -9 -f "com.valvesoftware.Steam" 2>/dev/null
+      kill -9 "$STEAM_PID" 2>/dev/null
+      exit 1
+    fi
+    break
+  fi
+
+  sleep 0.2
+done
+
+wait "$STEAM_PID" 2>/dev/null

@@ -38,7 +38,17 @@ if [ -n "$EXTERNAL_DISPLAYS" ]; then
   GAMESCOPE_ARGS="$GAMESCOPE_ARGS -O $EXTERNAL_DISPLAYS"
 fi
 
-exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- sh -c '
+# Explicitly bind the Gamescope Wayland socket name for Flatpak & detection
+export GAMESCOPE_WAYLAND_DISPLAY="gamescope-0"
+
+exec gamescope $GAMESCOPE_ARGS --wayland-socket-name gamescope-0 --hdr-enabled --mangoapp -e -f -- sh -c '
+  export GAMESCOPE_WAYLAND_DISPLAY="gamescope-0"
+  export WAYLAND_DISPLAY="gamescope-0"
+
+  if [ -n "$DESKTOP_SESSION_ID" ]; then
+    (/usr/bin/loginctl lock-session "$DESKTOP_SESSION_ID" 2>/dev/null || true) &
+  fi
+
   if [ -n "$MANGOHUD_CONFIGFILE" ]; then
     SANDBOX_XDG="$XDG_RUNTIME_DIR/.flatpak/com.valvesoftware.Steam/xdg-run"
     mkdir -p "$SANDBOX_XDG"
@@ -48,7 +58,9 @@ exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- sh -c '
     ln -sf "$SANDBOX_CONFIG" "$MANGOHUD_CONFIGFILE"
   fi
 
-  exec flatpak run \
-    --env=MANGOHUD_CONFIGFILE="$MANGOHUD_CONFIGFILE" \
-    com.valvesoftware.Steam -steamos3 "$@"
+  /usr/bin/steam -steamos3 "$@"
+
+  if [ -n "$ORIG_VT" ]; then
+    sudo /usr/bin/chvt "$ORIG_VT" 2>/dev/null || true
+  fi
 ' _ "$@"
