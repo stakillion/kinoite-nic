@@ -1,7 +1,14 @@
 ARG FEDORA_VER=44
 ARG KERNEL_FLAVOR=ogc
 
+# ==============================================================================
+# Stage 0: Pre-signed Kernel & Nvidia module cache from Universal Blue
+# ==============================================================================
 FROM ghcr.io/ublue-os/akmods-nvidia-open:${KERNEL_FLAVOR}-${FEDORA_VER} AS akmods
+
+# ==============================================================================
+# Stage 1: Build rootfs with all packages, kernel modules, and configuration
+# ==============================================================================
 FROM quay.io/fedora/fedora-kinoite:${FEDORA_VER} AS rootfs
 
 # Enable COPR Repositories
@@ -30,6 +37,7 @@ RUN --mount=type=bind,from=akmods,src=/kernel-rpms,dst=/tmp/kernel-rpms \
         rpm-ostree rpm-ostree-libs plasma-discover-rpm-ostree \
         firefox firefox-langpacks \
         toolbox && \
+    rm -rf /usr/lib/modules/* && \
     dnf install -y --setopt=tsflags=noscripts --allowerasing \
         /tmp/kernel-rpms/*.rpm \
         /tmp/nvidia-rpms/kmods/*.rpm \
@@ -66,12 +74,31 @@ RUN systemctl enable libvirtd.service dnscrypt-proxy.service lid-guard.service l
 RUN KVER=$(ls /usr/lib/modules | grep ogc | tail -n 1) && \
     depmod -a "${KVER}" && \
     mkdir -p /var/roothome && \
-    env DRACUT_NO_XATTR=1 dracut --force --kver "${KVER}" "/usr/lib/modules/${KVER}/initramfs.img"
+    env DRACUT_NO_XATTR=1 SOURCE_DATE_EPOCH=0 dracut --force --kver "${KVER}" "/usr/lib/modules/${KVER}/initramfs.img"
 
 # Clean up
 RUN dnf clean all && \
     rm -rf /var/lib/libvirt/* /var/lib/dnf/* /var/lib/iscsi /run/akmods /run/dnf /tmp/* /var/tmp/* /var/cache/* /var/log/*
 
-# Label & lint rootfs
-LABEL containers.bootc=1
+# Validate rootfs with bootc container lint
 RUN bootc container lint
+
+# ==============================================================================
+# Stage 2: Rechunk base OS via chunkah
+# ==============================================================================
+FROM quay.io/coreos/chunkah AS chunkah
+RUN --mount=from=rootfs,src=/,target=/chunkah,ro \
+    chunkah build \
+        --max-layers 256 \
+        --prune /ostree \
+        --prune /sysroot/ostree \
+        --output oci:/run/src/out
+
+# ==============================================================================
+# Stage 3: Final Bootc Image
+# ==============================================================================
+FROM oci:out AS final
+LABEL containers.bootc=1
+ENV container=oci
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

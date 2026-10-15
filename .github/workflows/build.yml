@@ -44,12 +44,19 @@ jobs:
       - name: Build Image with Podman
         run: |
             podman build \
+                --target chunkah \
+                --timestamp 0 \
+                -v $(pwd):/run/src:rw,z \
+                . && \
+            podman build \
+                --target final \
                 --format=oci \
+                --timestamp 0 \
                 --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
                 --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
                 .
 
       - name: Push Image to GHCR
         run: |
-          podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          podman push --compression-format zstd ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          podman push --compression-format zstd --compression-level 9 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          podman push --compression-format zstd --compression-level 9 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
