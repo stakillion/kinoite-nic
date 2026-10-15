@@ -1,21 +1,16 @@
 ARG FEDORA_VER=44
+ARG KERNEL_FLAVOR=ogc
 
-# ==============================================================================
-# Stage 1: Build rootfs with all packages, kernel modules, and configuration
-# ==============================================================================
+FROM ghcr.io/ublue-os/akmods-nvidia-open:${KERNEL_FLAVOR}-${FEDORA_VER} AS akmods
 FROM quay.io/fedora/fedora-kinoite:${FEDORA_VER} AS rootfs
-
-# Enable RPM Fusion (Free & Non-Free)
-RUN dnf install -y \
-    https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
-    https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
 
 # Enable COPR Repositories
 RUN dnf copr enable -y bazzite-org/obs-vkcapture && \
-    dnf copr enable -y bieszczaders/kernel-cachyos && \
     dnf copr enable -y errornointernet/klassy && \
-    dnf copr enable -y deltacopy/darkly && \
-    dnf copr enable -y hikariknight/looking-glass-kvmfr
+    dnf copr enable -y deltacopy/darkly
+
+# Enable Negativo17 repository for Nvidia SELinux support
+RUN curl -fsSLo /etc/yum.repos.d/fedora-nvidia.repo https://negativo17.org/repos/fedora-nvidia.repo
 
 # Add Brave's official repository
 RUN curl -fsSLo /etc/yum.repos.d/brave-browser.repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
@@ -27,19 +22,22 @@ RUN curl -fsSLo /etc/yum.repos.d/tailscale.repo https://pkgs.tailscale.com/stabl
 RUN rm -rf /opt && \
     mkdir /opt
 
-# Remove stock kernel & Firefox, then install CachyOS kernel and system packages
-RUN rm -f /etc/dnf/protected.d/grub* /etc/dnf/protected.d/shim* && \
+# Remove stock kernel & Firefox, then install OGC kernel and system packages
+RUN --mount=type=bind,from=akmods,src=/kernel-rpms,dst=/tmp/kernel-rpms \
+    --mount=type=bind,from=akmods,src=/rpms,dst=/tmp/nvidia-rpms \
     dnf remove -y \
         kernel kernel-core kernel-modules kernel-modules-core kernel-modules-extra \
         rpm-ostree rpm-ostree-libs plasma-discover-rpm-ostree \
-        shim-* grub2-* bootupd \
         firefox firefox-langpacks \
         toolbox && \
-    dnf install -y --setopt=tsflags=noscripts \
-        kernel-cachyos kernel-cachyos-devel-matched systemd-boot-unsigned \
-        akmod-nvidia xorg-x11-drv-nvidia xorg-x11-drv-nvidia-cuda \
+    dnf install -y --setopt=tsflags=noscripts --allowerasing \
+        /tmp/kernel-rpms/*.rpm \
+        /tmp/nvidia-rpms/kmods/*.rpm \
+        /tmp/nvidia-rpms/nvidia/*x86_64.rpm \
+        /tmp/nvidia-rpms/nvidia/*noarch.rpm \
+        /tmp/nvidia-rpms/ublue-os/*.rpm \
         libratbag-ratbagd steam-devices obs-vkcapture \
-        libvirt qemu kvmfr-kmod dnscrypt-proxy tailscale \
+        libvirt qemu dnscrypt-proxy tailscale \
         brave-origin waydroid distrobox \
         neovim htop hyfetch yt-dlp \
         gamescope mangohud \
@@ -61,28 +59,11 @@ RUN sed -i -E "s/^#[[:space:]]*server_names[[:space:]]*=.*/server_names = ['quad
     sed -i -E "s/^[[:space:]]*require_nofilter[[:space:]]*=.*/require_nofilter = false/" /etc/dnscrypt-proxy/dnscrypt-proxy.toml && \
     sed -i -E "s/^#[[:space:]]*forwarding_rules[[:space:]]*=.*/forwarding_rules = '\/etc\/dnscrypt-proxy\/forwarding-rules.txt'/" /etc/dnscrypt-proxy/dnscrypt-proxy.toml
 
-# Configure altfiles in nsswitch.conf
-RUN sed -i 's/^passwd:.*/passwd:     files altfiles/' /etc/nsswitch.conf && \
-    sed -i 's/^group:.*/group:      files altfiles/' /etc/nsswitch.conf
-
 # Enable services
 RUN systemctl enable libvirtd.service dnscrypt-proxy.service lid-guard.service lid-guard-pre.service tailscaled.service
 
-# Build and sign kernel modules and trigger initramfs generation
-RUN --mount=type=secret,id=mok_key \
-    --mount=type=secret,id=mok_der \
-    KVER=$(ls /usr/lib/modules | grep cachyos | tail -n 1) && \
-    akmods --force --kernels "${KVER}" && \
-    find "/usr/lib/modules/${KVER}/extra/" -type f \( -name "*.ko" -o -name "*.ko.xz" \) | while read -r mod; do \
-        if [[ "$mod" == *.xz ]]; then \
-            unxz "$mod" && \
-            uncompressed="${mod%.xz}" && \
-            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/mok_key /run/secrets/mok_der "$uncompressed" && \
-            xz -z "$uncompressed"; \
-        else \
-            /usr/src/kernels/${KVER}/scripts/sign-file sha256 /run/secrets/mok_key /run/secrets/mok_der "$mod"; \
-        fi; \
-    done && \
+# Generate module dependency map and initramfs
+RUN KVER=$(ls /usr/lib/modules | grep ogc | tail -n 1) && \
     depmod -a "${KVER}" && \
     mkdir -p /var/roothome && \
     env DRACUT_NO_XATTR=1 dracut --force --kver "${KVER}" "/usr/lib/modules/${KVER}/initramfs.img"
@@ -91,65 +72,6 @@ RUN --mount=type=secret,id=mok_key \
 RUN dnf clean all && \
     rm -rf /var/lib/libvirt/* /var/lib/dnf/* /var/lib/iscsi /run/akmods /run/dnf /tmp/* /var/tmp/* /var/cache/* /var/log/*
 
-# Lint complete rootfs before splitting kernel or chunking
-RUN bootc container lint
-
-# ==============================================================================
-# Stage 2: Split raw kernel/initramfs out of rootfs using bootc
-# ==============================================================================
-FROM rootfs AS split
-RUN mkdir -p /kernel && \
-    bootc container split-kernel-and-rootfs \
-      --rootfs / \
-      --output /kernel
-
-# ==============================================================================
-# Stage 3: Rechunk stripped base OS via chunkah
-# ==============================================================================
-FROM quay.io/coreos/chunkah AS chunkah
-RUN --mount=from=split,src=/,target=/chunkah,ro \
-    chunkah build \
-        --max-layers 256 \
-        --prune /ostree \
-        --prune /sysroot/ostree \
-        --prune /kernel \
-        --output oci:/run/src/out
-
-# ==============================================================================
-# Stage 4: Load chunked base image
-# ==============================================================================
-FROM oci:out AS rootfs-chunked
+# Label & lint rootfs
 LABEL containers.bootc=1
-ENV container=oci
-STOPSIGNAL SIGRTMIN+3
-CMD ["/sbin/init"]
-
-# ==============================================================================
-# Stage 5: Build UKI using extracted kernel directory from Stage 2
-# ==============================================================================
-FROM quay.io/fedora/fedora-bootc:latest AS sealed-uki
-RUN dnf install -y systemd-ukify sbsigntools && dnf clean all
-
-RUN --mount=type=tmpfs,target=/run \
-    --mount=type=tmpfs,target=/tmp \
-    --mount=type=secret,id=mok_key \
-    --mount=type=secret,id=mok_crt \
-    --mount=type=bind,from=rootfs-chunked,target=/run/target,ro \
-    --mount=type=bind,from=split,src=/kernel,target=/kernel,ro \
-    set -euo pipefail && \
-    KVER=$(ls /kernel) && \
-    mkdir -p /out && \
-    bootc container ukify \
-      --rootfs /run/target \
-      --kernel-dir "/kernel/${KVER}" \
-      -- \
-      --output "/out/${KVER}.efi" \
-      --signtool sbsign \
-      --secureboot-private-key /run/secrets/mok_key \
-      --secureboot-certificate /run/secrets/mok_crt
-
-# ==============================================================================
-# Stage 6: Final Image (Chunked Base + UKI top layer)
-# ==============================================================================
-FROM rootfs-chunked AS final
-COPY --from=sealed-uki /out/*.efi /boot/EFI/Linux/
+RUN bootc container lint

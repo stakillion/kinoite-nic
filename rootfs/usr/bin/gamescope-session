@@ -38,15 +38,10 @@ if [ -n "$EXTERNAL_DISPLAYS" ]; then
   GAMESCOPE_ARGS="$GAMESCOPE_ARGS -O $EXTERNAL_DISPLAYS"
 fi
 
-# Explicitly bind the Gamescope Wayland socket name for Flatpak & detection
-export GAMESCOPE_WAYLAND_DISPLAY="gamescope-0"
-
-exec gamescope $GAMESCOPE_ARGS --wayland-socket-name gamescope-0 --hdr-enabled --mangoapp -e -f -- sh -c '
-  export GAMESCOPE_WAYLAND_DISPLAY="gamescope-0"
-  export WAYLAND_DISPLAY="gamescope-0"
-
+# Run Gamescope cleanly without the invalid --wayland-socket-name flag
+exec gamescope $GAMESCOPE_ARGS --hdr-enabled --mangoapp -e -f -- sh -c '
   if [ -n "$DESKTOP_SESSION_ID" ]; then
-    (/usr/bin/loginctl lock-session "$DESKTOP_SESSION_ID" 2>/dev/null || true) &
+    /usr/bin/loginctl lock-session $DESKTOP_SESSION_ID 2>/dev/null &
   fi
 
   if [ -n "$MANGOHUD_CONFIGFILE" ]; then

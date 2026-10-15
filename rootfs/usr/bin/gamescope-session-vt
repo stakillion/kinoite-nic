@@ -1,18 +1,36 @@
 #!/usr/bin/env bash
+
 TARGET_USER="$1"
 TARGET_TTY="$2"
-ORIG_VT="$3"
+ORIG_VT="${3:-2}"
 DESKTOP_SESSION_ID="$4"
 
 if [ -z "$TARGET_USER" ] || [ -z "$TARGET_TTY" ]; then
-    echo "Usage: $0 <user> <tty_number> [orig_vt] [desktop_session_id]"
-    exit 1
+  echo "Usage: $0 <user> <tty_number> [orig_vt] [desktop_session_id]"
+  exit 1
 fi
 
-exec systemd-run \
+TARGET_UID=$(id -u "$TARGET_USER")
+TTY_DEV="/dev/tty$TARGET_TTY"
+
+# 1. Lock the KDE session in the background
+loginctl lock-sessions 2>/dev/null &
+[ -n "$DESKTOP_SESSION_ID" ] && loginctl lock-session "$DESKTOP_SESSION_ID" 2>/dev/null &
+runuser -u "$TARGET_USER" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$TARGET_UID/bus" \
+  dbus-send --session --dest=org.freedesktop.ScreenSaver --type=method_call \
+  /ScreenSaver org.freedesktop.ScreenSaver.Lock 2>/dev/null &
+
+# 2. Disable framebuffer cursor blink, switch VT, and hide VT cursor
+echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null
+printf '\033c\033[?25l\033[?1c' > "$TTY_DEV"
+chvt "$TARGET_TTY"
+printf '\033[?25l\033[?1c' > "$TTY_DEV"
+
+# 3. Launch Gamescope synchronously on the active VT
+systemd-run \
   --unit="gamescope-tty$TARGET_TTY" \
   --property=PAMName=login \
-  --property=TTYPath="/dev/tty$TARGET_TTY" \
+  --property=TTYPath="$TTY_DEV" \
   --property=StandardInput=null \
   --property=StandardOutput=journal \
   --property=StandardError=journal \
@@ -24,3 +42,7 @@ exec systemd-run \
   --collect \
   --wait \
   /usr/bin/gamescope-session
+
+# 4. Restore cursor blink and return to the KDE VT
+echo 1 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null
+chvt "$ORIG_VT"
