@@ -76,9 +76,13 @@ RUN KVER=$(ls /usr/lib/modules | grep ogc | tail -n 1) && \
     mkdir -p /var/roothome && \
     env DRACUT_NO_XATTR=1 SOURCE_DATE_EPOCH=0 dracut --force --kver "${KVER}" "/usr/lib/modules/${KVER}/initramfs.img"
 
-# Clean up
+# Clean up build caches, logs, and normalize machine state
 RUN dnf clean all && \
-    rm -rf /var/lib/libvirt/* /var/lib/dnf/* /var/lib/iscsi /run/akmods /run/dnf /tmp/* /var/tmp/* /var/cache/* /var/log/*
+    rm -rf /var/lib/libvirt/* /var/lib/dnf* /var/lib/iscsi /run/akmods /run/dnf \
+        /var/cache/dnf* /var/cache/libdnf5* /var/cache/fontconfig/* && \
+    find /tmp /var/tmp -mindepth 1 -delete && \
+    find /var/log -type f -exec truncate -s 0 {} + && \
+    truncate -s 0 /etc/machine-id
 
 # Validate rootfs with bootc container lint
 RUN bootc container lint
